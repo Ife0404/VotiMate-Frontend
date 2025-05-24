@@ -18,6 +18,7 @@ import TabNavigator from "./TabNavigator";
 import HomeScreen from "../screens/HomeScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import ChatbotScreen from "../screens/ChatbotScreen";
+import ChatbotWelcomeScreen from "../screens/ChatbotWelcomeScreen";
 
 const Stack = createStackNavigator();
 
@@ -38,9 +39,11 @@ export default function AppNavigator() {
         <Stack.Screen name="Thanks" component={ThanksScreen} />
         <Stack.Screen name="ChartView" component={ChartScreen} />
         <Stack.Screen name="HomeView" component={HomeScreen} />
+        <Stack.Screen name="ChatbotWelcome" component={ChatbotWelcomeScreen} />
         <Stack.Screen name="ChatbotView" component={ChatbotScreen} />
         <Stack.Screen name="ProfileView" component={ProfileScreen} />
         <Stack.Screen name="Main" component={TabNavigator} />
+        <Stack.Screen name="Chat" component={TabNavigator} />
         <Stack.Screen name="Chart" component={TabNavigator} />
         <Stack.Screen name="Chatbot" component={TabNavigator} />
         <Stack.Screen name="Profile" component={TabNavigator} />

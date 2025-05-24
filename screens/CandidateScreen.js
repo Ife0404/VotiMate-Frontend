@@ -63,9 +63,6 @@ const CandidateScreen = ({ navigation }) => {
 
         <View style={styles.divider} />
 
-        <Text style={styles.label}>Date Of Birth</Text>
-        <Text style={styles.value}>12/04/2004</Text>
-
         <Text style={styles.label}>Level</Text>
         <Text style={styles.value}>300</Text>
 
