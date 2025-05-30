@@ -1,3 +1,4 @@
+// screens/ConfirmationScreen.js
 import React from "react";
 import {
   View,
@@ -6,25 +7,40 @@ import {
   StyleSheet,
   Modal,
   Platform,
+  Alert,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import * as api from "../services/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const ConfirmationScreen = ({ visible, onCancel }) => {
-  const navigation = useNavigation();
-
-  const handleConfirm = () => {
-    onCancel(); // Close the modal first
-    setTimeout(
-      () => {
-        navigation.navigate("Thanks"); // Then navigate
-      },
-      Platform.OS === "ios" ? 500 : 300
-    );
+const ConfirmationScreen = ({ visible, onCancel, candidateId, navigation }) => {
+  const handleConfirm = async () => {
+    try {
+      const matricNumber = await AsyncStorage.getItem("matricNumber");
+      if (!matricNumber) {
+        throw new Error("User not authenticated. Please log in again.");
+      }
+      await api.vote(candidateId, matricNumber);
+      onCancel();
+      setTimeout(
+        () => {
+          navigation.navigate("Thanks");
+        },
+        Platform.OS === "ios" ? 500 : 300
+      );
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error.message || "Voting failed. Please try again or log in."
+      );
+      if (error.message.includes("not authenticated")) {
+        navigation.navigate("Login");
+      }
+    }
   };
 
   return (
     <Modal
-      animationType="fade" // 👈 Reverted to fade
+      animationType="fade"
       transparent={true}
       visible={visible}
       onRequestClose={onCancel}
@@ -97,14 +113,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 8,
   },
-  buttonText: {
-    color: "black",
-    fontSize: 16,
-  },
-  buttonSecondText: {
-    color: "white",
-    fontSize: 16,
-  },
+  buttonText: { color: "black", fontSize: 16 },
+  buttonSecondText: { color: "white", fontSize: 16 },
 });
 
 export default ConfirmationScreen;

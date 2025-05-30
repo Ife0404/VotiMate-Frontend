@@ -1,21 +1,28 @@
-// screens/ResultsScreen.js
-import React from "react";
-import { View, Text, StyleSheet, ScrollView, Dimensions } from "react-native";
+// screens/ChartScreen.js
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, ScrollView, Alert } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-
+import * as api from "../services/api";
 
 const ChartScreen = () => {
-  const totalVotes = 4893;
-  const candidates = [
-    { name: "Eli", percentage: 41, votes: 2006, color: "#00FF00" }, // Green
-    { name: "Sam", percentage: 24, votes: 1174, color: "#0000FF" }, // Blue
-    { name: "Nicholes", percentage: 15, votes: 734, color: "#800080" }, // Purple
-    { name: "Robby", percentage: 10, votes: 489, color: "#FFD700" }, // Yellow
-    { name: "Kenny", percentage: 7, votes: 343, color: "#C0C0C0" }, // Silver
-    { name: "Miguel", percentage: 3, votes: 147, color: "#808080" }, // Gray
-  ];
+  const [results, setResults] = useState([]);
 
-  const screenWidth = Dimensions.get("window").width - 40; // Subtract padding
+  useEffect(() => {
+    const fetchResults = async () => {
+      try {
+        const data = await api.getResults();
+        if (!data || data.length === 0) {
+          setResults([]);
+        } else {
+          setResults(data);
+        }
+      } catch (error) {
+        Alert.alert("Error", error.message || "Failed to load results");
+        setResults([]);
+      }
+    };
+    fetchResults();
+  }, []);
 
   const ProgressBar = ({ percentage, color }) => (
     <View style={styles.progressBarContainer}>
@@ -38,27 +45,32 @@ const ChartScreen = () => {
       >
         <View style={styles.header}>
           <Text style={styles.headerText}>Total votes counted</Text>
-          <Text style={styles.totalVotes}>{totalVotes.toLocaleString()}</Text>
-        </View>
-      </LinearGradient>
-
-      {candidates.map((candidate, index) => (
-        <View key={index} style={styles.candidateRow}>
-          <View style={styles.candidateInfo}>
-            <Text style={styles.candidateName}>{candidate.name}</Text>
-            <Text style={styles.candidatePercentage}>
-              {candidate.percentage}%
-            </Text>
-          </View>
-          <ProgressBar
-            percentage={candidate.percentage}
-            color={candidate.color}
-          />
-          <Text style={styles.votesText}>
-            Votes: {candidate.votes.toLocaleString()}
+          <Text style={styles.totalVotes}>
+            {results.reduce((sum, r) => sum + r.votes, 0).toLocaleString()}
           </Text>
         </View>
-      ))}
+      </LinearGradient>
+      {results.length > 0 ? (
+        results.map((candidate, index) => (
+          <View key={index} style={styles.candidateRow}>
+            <View style={styles.candidateInfo}>
+              <Text style={styles.candidateName}>{candidate.name}</Text>
+              <Text style={styles.candidatePercentage}>
+                {candidate.percentage}%
+              </Text>
+            </View>
+            <ProgressBar
+              percentage={candidate.percentage}
+              color={candidate.color || "#00FF00"}
+            />
+            <Text style={styles.votesText}>
+              Votes: {candidate.votes.toLocaleString()}
+            </Text>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.noDataText}>No results yet</Text>
+      )}
     </ScrollView>
   );
 };
@@ -106,29 +118,22 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 5,
   },
-  candidateName: {
-    color: "#D3D3D3", // Light gray for candidate names
-    fontSize: 18,
-  },
-  candidatePercentage: {
-    color: "#D3D3D3", // Light gray for percentage
-    fontSize: 18,
-  },
+  candidateName: { color: "#D3D3D3", fontSize: 18 },
+  candidatePercentage: { color: "#D3D3D3", fontSize: 18 },
   progressBarContainer: {
     height: 10,
-    backgroundColor: "#555555", // Gray background for progress bar
+    backgroundColor: "#555555",
     borderRadius: 5,
     overflow: "hidden",
     marginBottom: 5,
   },
-  progressBar: {
-    height: "100%",
-    borderRadius: 5,
-  },
-  votesText: {
-    color: "#D3D3D3", // Light gray for votes
-    fontSize: 14,
-    textAlign: "right",
+  progressBar: { height: "100%", borderRadius: 5 },
+  votesText: { color: "#D3D3D3", fontSize: 14, textAlign: "right" },
+  noDataText: {
+    color: "#fff",
+    fontSize: 18,
+    textAlign: "center",
+    marginTop: 20,
   },
 });
 

@@ -1,4 +1,5 @@
-import React from "react";
+// screens/HomeScreen.js
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,138 +7,430 @@ import {
   TextInput,
   ScrollView,
   Image,
+  Alert,
+  StatusBar,
+  Animated,
 } from "react-native";
 import CandidateCard from "../components/CandidateCard";
 import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
+import * as api from "../services/api";
 
 export default function HomeScreen({ navigation }) {
+  const [candidates, setCandidates] = useState([]);
+  const [filteredCandidates, setFilteredCandidates] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [timeRemaining, setTimeRemaining] = useState({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+  });
+  const [fadeAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const candidatesData = await api.getCandidates();
+        let allCandidates = [];
+
+        // Handle both flat array and nested election structure
+        if (candidatesData && Array.isArray(candidatesData)) {
+          if (candidatesData.length > 0 && candidatesData[0].candidates) {
+            // Nested structure - extract candidates from elections
+            candidatesData.forEach((election) => {
+              if (election.candidates && Array.isArray(election.candidates)) {
+                allCandidates = [...allCandidates, ...election.candidates];
+              }
+            });
+          } else {
+            // Flat array structure
+            allCandidates = candidatesData;
+          }
+        }
+
+        if (!allCandidates || allCandidates.length === 0) {
+          setCandidates([]);
+          setFilteredCandidates([]);
+        } else {
+          const mappedCandidates = allCandidates.map((cand, index) => ({
+            id: cand.id || index.toString(),
+            name: cand.name || `Candidate ${index + 1}`,
+            position: cand.position || "Candidate",
+            imageUrl: cand.imageUrl || null,
+            level: cand.level || null,
+            campaignPromises: cand.campaignPromises || null,
+          }));
+          setCandidates(mappedCandidates);
+          setFilteredCandidates(mappedCandidates);
+        }
+
+        const electionData = await api.getElectionStatus();
+        // Handle nested election data structure
+        let endDate = null;
+        if (
+          electionData &&
+          Array.isArray(electionData) &&
+          electionData.length > 0
+        ) {
+          // If it's an array of elections, use the first one
+          endDate = electionData[0].endDate
+            ? new Date(electionData[0].endDate)
+            : null;
+        } else if (electionData && electionData.endDate) {
+          // If it's a flat object with endDate
+          endDate = new Date(electionData.endDate);
+        }
+        const updateTimer = () => {
+          const now = new Date();
+          if (!endDate || isNaN(endDate.getTime()) || endDate <= now) {
+            setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+            return;
+          }
+          const timeDiff = endDate - now;
+          const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor(
+            (timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+          );
+          const minutes = Math.floor(
+            (timeDiff % (1000 * 60 * 60)) / (1000 * 60)
+          );
+          const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+          setTimeRemaining({ days, hours, minutes, seconds });
+        };
+        updateTimer();
+        const timerInterval = setInterval(updateTimer, 1000);
+        return () => clearInterval(timerInterval);
+      } catch (error) {
+        Alert.alert("Error", error.message || "Failed to load data");
+        setCandidates([]);
+        setFilteredCandidates([]);
+        setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      }
+    };
+    fetchData();
+
+    // Fade in animation
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    if (query.trim() === "" || !candidates.length) {
+      setFilteredCandidates(candidates);
+    } else {
+      const filtered = candidates.filter(
+        (candidate) =>
+          candidate.name.toLowerCase().includes(query.toLowerCase()) ||
+          candidate.position.toLowerCase().includes(query.toLowerCase())
+      );
+      setFilteredCandidates(filtered);
+    }
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Home</Text>
-
-      {/* Timer Section */}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#14104D" />
       <LinearGradient
-        colors={["#4B2AFA", "#2C1994"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.timerBox}
+        colors={["#14104D", "#1a1461", "#241b7a"]}
+        style={styles.headerGradient}
       >
-        <View style={styles.timerHeader}>
-          <Image
-            source={require("../assets/hourglass.png")}
-            style={styles.timerIcon}
-          />
-          <Text style={styles.timerLabel}>Remaining time for the election</Text>
-        </View>
-
-        <View style={styles.timerRow}>
-          <View style={styles.timerRow}>
-            <View style={styles.timeItem}>
-              <Text style={styles.timeValue}>124</Text>
-              <Text style={styles.timeLabel}>Days</Text>
-            </View>
-            <View style={styles.timeItem}>
-              <Text style={styles.timeValue}>4</Text>
-              <Text style={styles.timeLabel}>Hours</Text>
-            </View>
-            <View style={styles.timeItem}>
-              <Text style={styles.timeValue}>30</Text>
-              <Text style={styles.timeLabel}>Minutes</Text>
-            </View>
-            <View style={styles.timeItem}>
-              <Text style={styles.timeValue}>29</Text>
-              <Text style={styles.timeLabel}>Seconds</Text>
+        <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.greeting}>Good day!</Text>
+              <Text style={styles.title}>Choose Your Candidate</Text>
             </View>
           </View>
-        </View>
+        </Animated.View>
       </LinearGradient>
 
-      <TextInput
-        placeholder="Search Candidates"
-        placeholderTextColor="#999"
-        style={styles.searchInput}
-      />
+      <ScrollView
+        style={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Timer Card */}
+        <Animated.View style={[styles.timerCard, { opacity: fadeAnim }]}>
+          <LinearGradient
+            colors={["#6236FF", "#4B2AFA", "#2C1994"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.timerGradient}
+          >
+            <View style={styles.timerHeader}>
+              <View style={styles.timerIconContainer}>
+                <Ionicons name="time-outline" size={24} color="#fff" />
+              </View>
+              <Text style={styles.timerLabel}>Election Countdown</Text>
+            </View>
+            <View style={styles.timerGrid}>
+              <View style={styles.timeBlock}>
+                <Text style={styles.timeValue}>{timeRemaining.days}</Text>
+                <Text style={styles.timeLabel}>Days</Text>
+              </View>
+              <View style={styles.timeBlock}>
+                <Text style={styles.timeValue}>{timeRemaining.hours}</Text>
+                <Text style={styles.timeLabel}>Hours</Text>
+              </View>
+              <View style={styles.timeBlock}>
+                <Text style={styles.timeValue}>{timeRemaining.minutes}</Text>
+                <Text style={styles.timeLabel}>Minutes</Text>
+              </View>
+              <View style={styles.timeBlock}>
+                <Text style={styles.timeValue}>{timeRemaining.seconds}</Text>
+                <Text style={styles.timeLabel}>Seconds</Text>
+              </View>
+            </View>
+          </LinearGradient>
+        </Animated.View>
 
-      {[
-        "President",
-        "Welfare Director",
-        "General Secretary",
-        "Commisioner",
-        "Vice President",
-      ].map((role, index) => (
-        <CandidateCard
-          key={index}
-          name="Mauro Pires"
-          position={role}
-          image={require("../assets/mauro.png")}
-          navigation={navigation}
-        />
-      ))}
-    </ScrollView>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search-outline"
+            size={20}
+            color="#B1A9FF"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            placeholder="Search candidates or positions..."
+            placeholderTextColor="#B1A9FF"
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={handleSearch}
+          />
+          {searchQuery.length > 0 && (
+            <Ionicons
+              name="close-circle"
+              size={20}
+              color="#B1A9FF"
+              onPress={() => handleSearch("")}
+            />
+          )}
+        </View>
+
+        {/* Candidates Section */}
+        <View style={styles.candidatesSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {searchQuery
+                ? `Search Results (${filteredCandidates.length})`
+                : "All Candidates"}
+            </Text>
+            {!searchQuery && (
+              <Text style={styles.candidateCount}>
+                {candidates.length} total
+              </Text>
+            )}
+          </View>
+
+          {filteredCandidates.length > 0 ? (
+            filteredCandidates.map((candidate, index) => (
+              <Animated.View
+                key={candidate.id}
+                style={[
+                  styles.candidateWrapper,
+                  {
+                    opacity: fadeAnim,
+                    transform: [
+                      {
+                        translateY: fadeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <CandidateCard
+                  name={candidate.name}
+                  position={candidate.position}
+                  imageUrl={candidate.imageUrl}
+                  navigation={navigation}
+                  candidateId={candidate.id}
+                />
+              </Animated.View>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="person-outline" size={64} color="#6236FF" />
+              <Text style={styles.emptyTitle}>No candidates found</Text>
+              <Text style={styles.emptySubtitle}>
+                {searchQuery
+                  ? "Try adjusting your search terms"
+                  : "Candidates will appear here once added"}
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#14104D",
-    padding: 20,
-    paddingTop: 70,
+    backgroundColor: "#14104D", // Changed to consistent background
+  },
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 20,
+  },
+  header: {
+    paddingHorizontal: 20,
+  },
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  greeting: {
+    color: "#B1A9FF",
+    fontSize: 14,
+    fontWeight: "500",
   },
   title: {
     color: "white",
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "bold",
-    marginBottom: 20,
+    marginTop: 4,
   },
-  timerBox: {
-    backgroundColor: "#1E1763",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
+  notificationBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scrollContainer: {
+    flex: 1,
+    backgroundColor: "#14104D", // Changed to consistent background
+  },
+  scrollContent: {
+    paddingBottom: 20,
+  },
+  timerCard: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 20,
+    overflow: "hidden",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  timerGradient: {
+    padding: 24,
   },
   timerHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 20,
   },
-  timerIcon: {
-    width: 20,
-    height: 20,
-    marginRight: 4,
-    marginTop: 4,
-    resizeMode: "contain",
+  timerIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
   },
   timerLabel: {
-    color: "#CFCFCF",
-    fontSize: 15,
-    fontFamily: "Poppins",
-    fontWeight: "bold",
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "600",
   },
-  timerRow: {
+  timerGrid: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 41,
   },
-  timeItem: {
+  timeBlock: {
     alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    minWidth: 60,
   },
   timeValue: {
-    color: "#FFFFFF",
-    fontSize: 32,
-    fontFamily: "Poppins",
+    color: "#ffffff",
+    fontSize: 24,
     fontWeight: "bold",
   },
   timeLabel: {
-    color: "#fff",
-    fontWeight: "semibold",
-    fontFamily: "Poppins",
-    fontSize: 15,
+    color: "#E8E3FF",
+    fontSize: 12,
+    fontWeight: "500",
+    marginTop: 4,
+  },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.1)", // Changed to semi-transparent for dark background
+    marginHorizontal: 20,
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(177, 169, 255, 0.2)", // Added subtle border
+  },
+  searchIcon: {
+    marginRight: 12,
   },
   searchInput: {
-    backgroundColor: "white",
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 20,
+    flex: 1,
+    fontSize: 16,
+    color: "#ffffff", // Changed to white for visibility on dark background
+  },
+  candidatesSection: {
+    marginTop: 24,
+    paddingHorizontal: 20,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#ffffff", // Changed to white for visibility
+  },
+  candidateCount: {
+    fontSize: 14,
+    color: "#B1A9FF", // Changed to lighter purple for better contrast
+    fontWeight: "500",
+  },
+  candidateWrapper: {
+    marginBottom: 16,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#ffffff", // Changed to white for visibility
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: "#B1A9FF", // Changed to lighter purple for better contrast
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 20,
   },
 });
