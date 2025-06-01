@@ -16,7 +16,7 @@ const Onboarding3 = ({ navigation }) => {
       </View>
 
       <TouchableOpacity
-        onPress={() => navigation.replace("Login")}
+        onPress={() => navigation.replace("Selection")}
         style={styles.button}
       >
         <Text style={styles.buttonText}>Get Started</Text>

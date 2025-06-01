@@ -12,14 +12,22 @@ import {
 import * as api from "../services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const ConfirmationScreen = ({ visible, onCancel, candidateId, navigation }) => {
+const ConfirmationScreen = ({
+  visible,
+  onCancel,
+  candidateId,
+  electionId,
+  navigation,
+}) => {
   const handleConfirm = async () => {
     try {
       const matricNumber = await AsyncStorage.getItem("matricNumber");
       if (!matricNumber) {
         throw new Error("User not authenticated. Please log in again.");
       }
-      await api.vote(candidateId, matricNumber);
+
+      // Make sure to pass electionId to the API call
+      await api.vote(candidateId, matricNumber, electionId);
       onCancel();
       setTimeout(
         () => {
@@ -40,26 +48,38 @@ const ConfirmationScreen = ({ visible, onCancel, candidateId, navigation }) => {
 
   return (
     <Modal
-      animationType="fade"
+      animationType="slide"
       transparent={true}
       visible={visible}
       onRequestClose={onCancel}
     >
       <View style={styles.modalOverlay}>
         <View style={styles.dialog}>
-          <Text style={styles.title}>Confirmation</Text>
+          <View style={styles.iconContainer}>
+            <Text style={styles.icon}>⚠️</Text>
+          </View>
+
+          <Text style={styles.title}>Confirm Your Vote</Text>
           <Text style={styles.message}>
-            Are you sure? Your vote cannot be changed.
+            Are you sure you want to cast your vote?{"\n"}
+            <Text style={styles.warning}>This action cannot be undone.</Text>
           </Text>
+
           <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-              <Text style={styles.buttonText}>Cancel</Text>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={onCancel}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.confirmButton}
               onPress={handleConfirm}
+              activeOpacity={0.8}
             >
-              <Text style={styles.buttonSecondText}>Confirm</Text>
+              <Text style={styles.confirmButtonText}>Confirm</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -71,50 +91,101 @@ const ConfirmationScreen = ({ visible, onCancel, candidateId, navigation }) => {
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "center",
     alignItems: "center",
   },
   dialog: {
     backgroundColor: "white",
-    padding: 20,
-    borderRadius: 10,
-    width: "80%",
+    padding: 24,
+    borderRadius: 16,
+    width: "85%",
+    maxWidth: 320,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  iconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#FFF3E0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  icon: {
+    fontSize: 28,
   },
   title: {
-    fontSize: 20,
-    fontWeight: "bold",
+    fontSize: 22,
+    fontWeight: "700",
     color: "#6B48FF",
-    marginBottom: 10,
+    marginBottom: 12,
+    textAlign: "center",
   },
   message: {
     fontSize: 16,
-    color: "#333",
+    color: "#555",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  warning: {
+    color: "#FF6B6B",
+    fontWeight: "600",
+    fontSize: 14,
   },
   buttonContainer: {
     flexDirection: "row",
-    justifyContent: "center",
-    gap: 20,
     width: "100%",
+    paddingHorizontal: 8,
   },
   cancelButton: {
+    flex: 1,
     borderColor: "#4B2AFA",
     borderWidth: 2,
-    paddingVertical: 10,
+    paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 8,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "transparent",
+    marginRight: 8,
   },
   confirmButton: {
+    flex: 1,
     backgroundColor: "#4B2AFA",
-    paddingVertical: 10,
+    paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 8,
+    borderRadius: 12,
+    alignItems: "center",
+    marginLeft: 8,
+    shadowColor: "#4B2AFA",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  buttonText: { color: "black", fontSize: 16 },
-  buttonSecondText: { color: "white", fontSize: 16 },
+  cancelButtonText: {
+    color: "#4B2AFA",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  confirmButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
 });
 
+// Make sure to export as default
 export default ConfirmationScreen;
