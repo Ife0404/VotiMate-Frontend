@@ -25,6 +25,7 @@ const ProfileScreen = ({ navigation }) => {
     department: "",
     position: "Voter",
   });
+  const [originalData, setOriginalData] = useState({}); // Store original data for cancel
   const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
@@ -32,6 +33,7 @@ const ProfileScreen = ({ navigation }) => {
       try {
         const data = await api.getProfile();
         setUserData(data);
+        setOriginalData(data); // Store original data
       } catch (error) {
         Alert.alert("Error", error.message || "Failed to load profile");
       }
@@ -62,17 +64,18 @@ const ProfileScreen = ({ navigation }) => {
     }
 
     try {
-      await api.updateProfile(userData);
+      const result = await api.updateProfile(userData);
+      setOriginalData(userData); // Update original data after successful save
       setIsEditing(false);
-      Alert.alert("Success", "Profile updated successfully");
+      Alert.alert("Success", result.message || "Profile updated successfully");
     } catch (error) {
       Alert.alert("Error", error.message || "Failed to update profile");
     }
   };
 
   const handleCancel = () => {
+    setUserData(originalData); // Reset to original data
     setIsEditing(false);
-    // Reset to original data if needed
   };
 
   const handleLogout = async () => {
@@ -83,7 +86,8 @@ const ProfileScreen = ({ navigation }) => {
         style: "destructive",
         onPress: async () => {
           try {
-            await api.logout();
+            // Use the server logout if you want, otherwise just the local logout
+            await api.logout(); // or api.logoutFromServer() if you implement it
             navigation.replace("Onboarding1");
           } catch (error) {
             Alert.alert("Error", error.message || "Failed to logout");

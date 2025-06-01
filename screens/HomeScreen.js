@@ -28,9 +28,13 @@ export default function HomeScreen({ navigation }) {
   });
   const [fadeAnim] = useState(new Animated.Value(0));
 
+  // Updated useEffect in HomeScreen.js
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Add cache-busting timestamp to force fresh data
+        const timestamp = new Date().getTime();
+
         const candidatesData = await api.getCandidates();
         let allCandidates = [];
 
@@ -65,49 +69,91 @@ export default function HomeScreen({ navigation }) {
           setFilteredCandidates(mappedCandidates);
         }
 
+        // Force fresh election data
         const electionData = await api.getElectionStatus();
+        console.log("Fresh election data:", electionData); // Debug log
+
         // Handle nested election data structure
         let endDate = null;
+        let startDate = null;
+
         if (
           electionData &&
           Array.isArray(electionData) &&
           electionData.length > 0
         ) {
-          // If it's an array of elections, use the first one
-          endDate = electionData[0].endDate
-            ? new Date(electionData[0].endDate)
+          // If it's an array of elections, find the active one or use the first one
+          const activeElection =
+            electionData.find(
+              (e) => e.status === "ACTIVE" || e.status === "ONGOING"
+            ) || electionData[0];
+
+          endDate = activeElection.endDate
+            ? new Date(activeElection.endDate)
+            : null;
+          startDate = activeElection.startDate
+            ? new Date(activeElection.startDate)
             : null;
         } else if (electionData && electionData.endDate) {
           // If it's a flat object with endDate
           endDate = new Date(electionData.endDate);
+          startDate = electionData.startDate
+            ? new Date(electionData.startDate)
+            : null;
         }
+
+        console.log("Parsed dates:", { startDate, endDate, now: new Date() }); // Debug log
+
         const updateTimer = () => {
           const now = new Date();
-          if (!endDate || isNaN(endDate.getTime()) || endDate <= now) {
-            setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+          // If we have a start date and it's in the future, count down to start
+          if (startDate && startDate > now) {
+            const timeDiff = startDate - now;
+            const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor(
+              (timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+            );
+            const minutes = Math.floor(
+              (timeDiff % (1000 * 60 * 60)) / (1000 * 60)
+            );
+            const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+            setTimeRemaining({ days, hours, minutes, seconds });
             return;
           }
-          const timeDiff = endDate - now;
-          const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-          const hours = Math.floor(
-            (timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
-          );
-          const minutes = Math.floor(
-            (timeDiff % (1000 * 60 * 60)) / (1000 * 60)
-          );
-          const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
-          setTimeRemaining({ days, hours, minutes, seconds });
+
+          // If we have an end date and it's in the future, count down to end
+          if (endDate && endDate > now) {
+            const timeDiff = endDate - now;
+            const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor(
+              (timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+            );
+            const minutes = Math.floor(
+              (timeDiff % (1000 * 60 * 60)) / (1000 * 60)
+            );
+            const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+            setTimeRemaining({ days, hours, minutes, seconds });
+            return;
+          }
+
+          // Election has ended or no valid dates
+          setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 });
         };
+
         updateTimer();
         const timerInterval = setInterval(updateTimer, 1000);
+
         return () => clearInterval(timerInterval);
       } catch (error) {
+        console.error("Error fetching data:", error);
         Alert.alert("Error", error.message || "Failed to load data");
         setCandidates([]);
         setFilteredCandidates([]);
         setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 });
       }
     };
+
     fetchData();
 
     // Fade in animation
@@ -116,7 +162,8 @@ export default function HomeScreen({ navigation }) {
       duration: 800,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, []); 
+
 
   const handleSearch = (query) => {
     setSearchQuery(query);

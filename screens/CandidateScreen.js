@@ -20,16 +20,22 @@ const CandidateScreen = ({ navigation, route }) => {
   const { candidateId } = route.params || { candidateId: "1" };
   const [modalVisible, setModalVisible] = useState(false);
   const [candidate, setCandidate] = useState(null);
+  const [electionId, setElectionId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [imageLoadError, setImageLoadError] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
-    const fetchCandidate = async () => {
+    const fetchData = async () => {
       setLoading(true);
       setImageLoadError(false);
       try {
-        const candidates = await api.getCandidates();
+        // Fetch both candidate and election data
+        const [candidates, electionData] = await Promise.all([
+          api.getCandidates(),
+          api.getElectionStatus(),
+        ]);
+
         const selectedCandidate = candidates.find(
           (cand) => cand.id === candidateId
         );
@@ -37,6 +43,17 @@ const CandidateScreen = ({ navigation, route }) => {
           throw new Error("Candidate not found");
         }
         setCandidate(selectedCandidate);
+
+        // Get the current election ID
+        if (electionData && electionData.length > 0) {
+          // Assuming the first election is the current one, or find the active one
+          const currentElection =
+            electionData.find((election) => election.status === "ACTIVE") ||
+            electionData[0];
+          setElectionId(currentElection.id);
+        } else {
+          throw new Error("No active election found");
+        }
       } catch (error) {
         Alert.alert(
           "Error",
@@ -48,7 +65,7 @@ const CandidateScreen = ({ navigation, route }) => {
       }
     };
 
-    fetchCandidate();
+    fetchData();
 
     // Fade in animation
     Animated.timing(fadeAnim, {
@@ -59,7 +76,7 @@ const CandidateScreen = ({ navigation, route }) => {
   }, [candidateId, navigation]);
 
   const handleVote = () => {
-    if (candidate) {
+    if (candidate && electionId) {
       setModalVisible(true);
     }
   };
@@ -155,7 +172,7 @@ const CandidateScreen = ({ navigation, route }) => {
           <TouchableOpacity
             style={styles.voteButton}
             onPress={handleVote}
-            disabled={!candidate}
+            disabled={!candidate || !electionId}
           >
             <LinearGradient
               colors={["#6236FF", "#4B2AFA"]}
@@ -220,6 +237,7 @@ const CandidateScreen = ({ navigation, route }) => {
         visible={modalVisible}
         onCancel={handleCancel}
         candidateId={candidateId}
+        electionId={electionId}
         navigation={navigation}
       />
     </View>
