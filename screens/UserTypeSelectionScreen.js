@@ -23,15 +23,6 @@ const UserTypeSelectionScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#14104D" />
 
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
-
       <View style={styles.content}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Choose Login Type</Text>
@@ -123,6 +114,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   content: {
+    marginTop: 25,
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: "center",

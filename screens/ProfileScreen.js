@@ -88,7 +88,7 @@ const ProfileScreen = ({ navigation }) => {
           try {
             // Use the server logout if you want, otherwise just the local logout
             await api.logout(); // or api.logoutFromServer() if you implement it
-            navigation.replace("Onboarding1");
+            navigation.replace("Onboarding");
           } catch (error) {
             Alert.alert("Error", error.message || "Failed to logout");
           }

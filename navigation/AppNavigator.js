@@ -3,9 +3,7 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import SplashScreen from "../screens/SplashScreen";
-import Onboarding1 from "../screens/Onboarding1";
-import Onboarding2 from "../screens/Onboarding2";
-import Onboarding3 from "../screens/Onboarding3";
+import Onboarding from "../screens/OnboardingScreen";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import CandidateScreen from "../screens/CandidateScreen";
@@ -27,6 +25,7 @@ import EditElectionScreen from "../screens/EditElectionScreen";
 import AdminProfileScreen from "../screens/AdminProfileScreen";
 import CandidateManagementScreen from "../screens/CandidateManagementScreen";
 import EditCandidateScreen from "../screens/EditCandidateScreen";
+import OnboardingScreen from "../screens/OnboardingScreen";
 
 const Stack = createStackNavigator();
 
@@ -38,9 +37,7 @@ export default function AppNavigator() {
         screenOptions={{ headerShown: false }}
       >
         <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Onboarding1" component={Onboarding1} />
-        <Stack.Screen name="Onboarding2" component={Onboarding2} />
-        <Stack.Screen name="Onboarding3" component={Onboarding3} />
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="Candidate" component={CandidateScreen} />

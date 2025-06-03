@@ -77,13 +77,39 @@ const CandidateManagementScreen = ({ navigation }) => {
     },
   ]);
 
-  // Get unique elections for filter
-  const elections = [
-    ...new Set(
-      candidates.map((c) => ({ id: c.electionId, title: c.electionTitle }))
-    ),
-  ];
+  // Get unique elections for filter(Longer version for future purposes)
+  // const getUniqueElections = () => {
+  //   const seen = new Set();
+  //   return candidates
+  //     .filter((candidate) => {
+  //       const key = `${candidate.electionId}-${candidate.electionTitle}`;
+  //       if (seen.has(key)) {
+  //         return false;
+  //       }
+  //       seen.add(key);
+  //       return true;
+  //     })
+  //     .map((candidate) => ({
+  //       id: candidate.electionId,
+  //       title: candidate.electionTitle,
+  //     }));
+  // };
+  // const elections = getUniqueElections();
 
+  // Extract unique elections from candidates(shorter version)
+  const elections = candidates.reduce((unique, candidate) => {
+    const exists = unique.find(
+      (election) => election.id === candidate.electionId
+    );
+    if (!exists) {
+      unique.push({
+        id: candidate.electionId,
+        title: candidate.electionTitle,
+      });
+    }
+    return unique;
+  }, []);
+  
   const filterOptions = [
     { key: "all", label: "All Elections" },
     ...elections.map((election) => ({

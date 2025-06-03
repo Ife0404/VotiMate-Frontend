@@ -18,6 +18,7 @@ import * as api from "../services/api";
 
 export default function HomeScreen({ navigation }) {
   const [candidates, setCandidates] = useState([]);
+  const [elections, setElections] = useState([]);
   const [filteredCandidates, setFilteredCandidates] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [timeRemaining, setTimeRemaining] = useState({
@@ -28,13 +29,22 @@ export default function HomeScreen({ navigation }) {
   });
   const [fadeAnim] = useState(new Animated.Value(0));
 
-  // Updated useEffect in HomeScreen.js
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Add cache-busting timestamp to force fresh data
-        const timestamp = new Date().getTime();
+        // Fetch elections first
+        const electionsData = await api.getElections(); // Assuming you have this API endpoint
+        console.log("Elections data:", electionsData);
 
+        let electionsArray = [];
+        if (electionsData && Array.isArray(electionsData)) {
+          electionsArray = electionsData;
+        } else if (electionsData) {
+          electionsArray = [electionsData];
+        }
+        setElections(electionsArray);
+
+        // Fetch candidates
         const candidatesData = await api.getCandidates();
         let allCandidates = [];
 
@@ -44,12 +54,33 @@ export default function HomeScreen({ navigation }) {
             // Nested structure - extract candidates from elections
             candidatesData.forEach((election) => {
               if (election.candidates && Array.isArray(election.candidates)) {
-                allCandidates = [...allCandidates, ...election.candidates];
+                // Add election info to each candidate
+                const candidatesWithElection = election.candidates.map(
+                  (candidate) => ({
+                    ...candidate,
+                    electionId: election.id,
+                    electionTitle: election.title || election.name,
+                    electionStatus: election.status,
+                  })
+                );
+                allCandidates = [...allCandidates, ...candidatesWithElection];
               }
             });
           } else {
-            // Flat array structure
-            allCandidates = candidatesData;
+            // Flat array structure - try to match with elections
+            allCandidates = candidatesData.map((candidate) => {
+              const matchingElection = electionsArray.find(
+                (election) => election.id === candidate.electionId
+              );
+              return {
+                ...candidate,
+                electionTitle:
+                  matchingElection?.title ||
+                  matchingElection?.name ||
+                  "Unknown Election",
+                electionStatus: matchingElection?.status || "active",
+              };
+            });
           }
         }
 
@@ -64,16 +95,18 @@ export default function HomeScreen({ navigation }) {
             imageUrl: cand.imageUrl || null,
             level: cand.level || null,
             campaignPromises: cand.campaignPromises || null,
+            electionId: cand.electionId,
+            electionTitle: cand.electionTitle,
+            electionStatus: cand.electionStatus,
           }));
           setCandidates(mappedCandidates);
           setFilteredCandidates(mappedCandidates);
         }
 
-        // Force fresh election data
+        // Timer logic (keeping existing code)
         const electionData = await api.getElectionStatus();
-        console.log("Fresh election data:", electionData); // Debug log
+        console.log("Fresh election data:", electionData);
 
-        // Handle nested election data structure
         let endDate = null;
         let startDate = null;
 
@@ -82,7 +115,6 @@ export default function HomeScreen({ navigation }) {
           Array.isArray(electionData) &&
           electionData.length > 0
         ) {
-          // If it's an array of elections, find the active one or use the first one
           const activeElection =
             electionData.find(
               (e) => e.status === "ACTIVE" || e.status === "ONGOING"
@@ -95,19 +127,17 @@ export default function HomeScreen({ navigation }) {
             ? new Date(activeElection.startDate)
             : null;
         } else if (electionData && electionData.endDate) {
-          // If it's a flat object with endDate
           endDate = new Date(electionData.endDate);
           startDate = electionData.startDate
             ? new Date(electionData.startDate)
             : null;
         }
 
-        console.log("Parsed dates:", { startDate, endDate, now: new Date() }); // Debug log
+        console.log("Parsed dates:", { startDate, endDate, now: new Date() });
 
         const updateTimer = () => {
           const now = new Date();
 
-          // If we have a start date and it's in the future, count down to start
           if (startDate && startDate > now) {
             const timeDiff = startDate - now;
             const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
@@ -122,7 +152,6 @@ export default function HomeScreen({ navigation }) {
             return;
           }
 
-          // If we have an end date and it's in the future, count down to end
           if (endDate && endDate > now) {
             const timeDiff = endDate - now;
             const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
@@ -137,7 +166,6 @@ export default function HomeScreen({ navigation }) {
             return;
           }
 
-          // Election has ended or no valid dates
           setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 });
         };
 
@@ -150,20 +178,19 @@ export default function HomeScreen({ navigation }) {
         Alert.alert("Error", error.message || "Failed to load data");
         setCandidates([]);
         setFilteredCandidates([]);
+        setElections([]);
         setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 });
       }
     };
 
     fetchData();
 
-    // Fade in animation
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 800,
       useNativeDriver: true,
     }).start();
-  }, []); 
-
+  }, []);
 
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -173,9 +200,55 @@ export default function HomeScreen({ navigation }) {
       const filtered = candidates.filter(
         (candidate) =>
           candidate.name.toLowerCase().includes(query.toLowerCase()) ||
-          candidate.position.toLowerCase().includes(query.toLowerCase())
+          candidate.position.toLowerCase().includes(query.toLowerCase()) ||
+          (candidate.electionTitle &&
+            candidate.electionTitle.toLowerCase().includes(query.toLowerCase()))
       );
       setFilteredCandidates(filtered);
+    }
+  };
+
+  // Group candidates by election
+  const groupedCandidates = filteredCandidates.reduce((acc, candidate) => {
+    const electionTitle = candidate.electionTitle || "Other Elections";
+    if (!acc[electionTitle]) {
+      acc[electionTitle] = {
+        candidates: [],
+        status: candidate.electionStatus || "active",
+        electionId: candidate.electionId,
+      };
+    }
+    acc[electionTitle].candidates.push(candidate);
+    return acc;
+  }, {});
+
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case "active":
+      case "ongoing":
+        return ["#4ECDC4", "#44A08D"];
+      case "completed":
+      case "ended":
+        return ["#95A5A6", "#7F8C8D"];
+      case "upcoming":
+        return ["#FFD93D", "#FF9500"];
+      default:
+        return ["#6C4EF2", "#5A3ED9"];
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status?.toLowerCase()) {
+      case "active":
+      case "ongoing":
+        return "play-circle";
+      case "completed":
+      case "ended":
+        return "checkmark-circle";
+      case "upcoming":
+        return "time";
+      default:
+        return "vote";
     }
   };
 
@@ -245,7 +318,7 @@ export default function HomeScreen({ navigation }) {
             style={styles.searchIcon}
           />
           <TextInput
-            placeholder="Search candidates or positions..."
+            placeholder="Search candidates, positions, or elections..."
             placeholderTextColor="#B1A9FF"
             style={styles.searchInput}
             value={searchQuery}
@@ -261,49 +334,87 @@ export default function HomeScreen({ navigation }) {
           )}
         </View>
 
-        {/* Candidates Section */}
+        {/* Elections and Candidates Section */}
         <View style={styles.candidatesSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
               {searchQuery
                 ? `Search Results (${filteredCandidates.length})`
-                : "All Candidates"}
+                : "Elections & Candidates"}
             </Text>
             {!searchQuery && (
               <Text style={styles.candidateCount}>
-                {candidates.length} total
+                {candidates.length} total candidates
               </Text>
             )}
           </View>
 
-          {filteredCandidates.length > 0 ? (
-            filteredCandidates.map((candidate, index) => (
-              <Animated.View
-                key={candidate.id}
-                style={[
-                  styles.candidateWrapper,
-                  {
-                    opacity: fadeAnim,
-                    transform: [
-                      {
-                        translateY: fadeAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [50, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <CandidateCard
-                  name={candidate.name}
-                  position={candidate.position}
-                  imageUrl={candidate.imageUrl}
-                  navigation={navigation}
-                  candidateId={candidate.id}
-                />
-              </Animated.View>
-            ))
+          {Object.keys(groupedCandidates).length > 0 ? (
+            Object.entries(groupedCandidates).map(
+              ([electionTitle, electionData]) => (
+                <Animated.View
+                  key={electionTitle}
+                  style={[
+                    styles.electionGroup,
+                    {
+                      opacity: fadeAnim,
+                      transform: [
+                        {
+                          translateY: fadeAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [30, 0],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  {/* Election Header */}
+                  <View style={styles.electionHeader}>
+                    <View style={styles.electionInfo}>
+                      <View style={styles.electionIconContainer}>
+                        <Ionicons
+                          name={getStatusIcon(electionData.status)}
+                          size={20}
+                          color="#4ECDC4"
+                        />
+                      </View>
+                      <View style={styles.electionDetails}>
+                        <Text style={styles.electionTitle}>
+                          {electionTitle}
+                        </Text>
+                        <Text style={styles.candidateCount}>
+                          {electionData.candidates.length} candidate
+                          {electionData.candidates.length !== 1 ? "s" : ""}
+                        </Text>
+                      </View>
+                    </View>
+                    <LinearGradient
+                      colors={getStatusColor(electionData.status)}
+                      style={styles.statusBadge}
+                    >
+                      <Text style={styles.statusText}>
+                        {electionData.status?.charAt(0).toUpperCase() +
+                          electionData.status?.slice(1) || "Active"}
+                      </Text>
+                    </LinearGradient>
+                  </View>
+
+                  {/* Candidates for this election */}
+                  {electionData.candidates.map((candidate, index) => (
+                    <View key={candidate.id} style={styles.candidateWrapper}>
+                      <CandidateCard
+                        name={candidate.name}
+                        position={candidate.position}
+                        imageUrl={candidate.imageUrl}
+                        navigation={navigation}
+                        candidateId={candidate.id}
+                      />
+                    </View>
+                  ))}
+                </Animated.View>
+              )
+            )
           ) : (
             <View style={styles.emptyState}>
               <Ionicons name="person-outline" size={64} color="#6236FF" />
@@ -324,7 +435,7 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#14104D", // Changed to consistent background
+    backgroundColor: "#14104D",
   },
   headerGradient: {
     paddingTop: 50,
@@ -349,17 +460,9 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginTop: 4,
   },
-  notificationBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
   scrollContainer: {
     flex: 1,
-    backgroundColor: "#14104D", // Changed to consistent background
+    backgroundColor: "#14104D",
   },
   scrollContent: {
     paddingBottom: 20,
@@ -423,14 +526,14 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.1)", // Changed to semi-transparent for dark background
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     marginHorizontal: 20,
     marginTop: 20,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(177, 169, 255, 0.2)", // Added subtle border
+    borderColor: "rgba(177, 169, 255, 0.2)",
   },
   searchIcon: {
     marginRight: 12,
@@ -438,7 +541,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: "#ffffff", // Changed to white for visibility on dark background
+    color: "#ffffff",
   },
   candidatesSection: {
     marginTop: 24,
@@ -448,20 +551,67 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#ffffff", // Changed to white for visibility
+    color: "#ffffff",
   },
   candidateCount: {
     fontSize: 14,
-    color: "#B1A9FF", // Changed to lighter purple for better contrast
+    color: "#B1A9FF",
     fontWeight: "500",
   },
+  electionGroup: {
+    marginBottom: 24,
+  },
+  electionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  electionInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  electionIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(76, 205, 196, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  electionDetails: {
+    flex: 1,
+  },
+  electionTitle: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 2,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  statusText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
   candidateWrapper: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   emptyState: {
     alignItems: "center",
@@ -470,12 +620,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#ffffff", // Changed to white for visibility
+    color: "#ffffff",
     marginTop: 16,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: "#B1A9FF", // Changed to lighter purple for better contrast
+    color: "#B1A9FF",
     textAlign: "center",
     marginTop: 8,
     lineHeight: 20,
