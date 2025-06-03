@@ -25,6 +25,7 @@ const ChartScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showElectionSelector, setShowElectionSelector] = useState(false);
+  const [groupedResults, setGroupedResults] = useState({});
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Predefined colors for candidates
@@ -71,52 +72,68 @@ const ChartScreen = ({ navigation }) => {
         setSelectedElection(defaultElection);
       }
 
-      // Fetch results
-      await fetchResults(defaultElection);
+      // Fetch results for all elections
+      await fetchAllResults(electionsArray);
     } catch (error) {
       console.error("Error fetching initial data:", error);
-      Alert.alert("Error", "Failed to load elections. Showing demo data.");
+      Alert.alert("Error", "Failed to load elections.");
       setElections([]);
       setSelectedElection(null);
-      await fetchResults(null);
     } finally {
       setLoading(false);
     }
   };
 
-  // Update the fetchResults function in your ChartScreen.js
-
-  const fetchResults = async (election = null) => {
+  // New function to fetch results for all elections
+  const fetchAllResults = async (electionsArray = elections) => {
     try {
-      setLoading(true);
+      const grouped = {};
+      let colorIndex = 0;
 
-      // Use the selected election ID, or fallback to a default
-      const electionId = election?.id || selectedElection?.id || 1;
+      // Fetch results for each election
+      for (const election of electionsArray) {
+        try {
+          const data = await api.getResultsByElection(election.id);
 
-      // Use the correct API function based on your api.js
-      const data = await api.getResultsByElection(electionId);
+          if (
+            data &&
+            data.candidateResults &&
+            Array.isArray(data.candidateResults)
+          ) {
+            const transformedData = data.candidateResults.map(
+              (candidate, index) => ({
+                name:
+                  candidate.name ||
+                  candidate.candidateName ||
+                  `Candidate ${index + 1}`,
+                votes: candidate.voteCount || candidate.votes || 0,
+                percentage: candidate.percentage || 0,
+                id: candidate.id || candidate.candidateId || index + 1,
+                color: candidateColors[colorIndex % candidateColors.length],
+              })
+            );
 
-      // Check if data has the expected structure
-      if (
-        !data ||
-        !data.candidateResults ||
-        !Array.isArray(data.candidateResults)
-      ) {
-        console.warn("Unexpected data structure:", data);
-        throw new Error("Invalid results data structure");
+            // Sort by votes descending
+            transformedData.sort((a, b) => b.votes - a.votes);
+
+            grouped[
+              election.name || election.title || `Election ${election.id}`
+            ] = transformedData;
+            colorIndex += transformedData.length;
+          }
+        } catch (error) {
+          console.error(
+            `Error fetching results for election ${election.id}:`,
+            error
+          );
+        }
       }
 
-      // Transform the backend data to match your frontend format
-      const transformedData = data.candidateResults.map((candidate, index) => ({
-        name:
-          candidate.name || candidate.candidateName || `Candidate ${index + 1}`,
-        votes: candidate.voteCount || candidate.votes || 0,
-        percentage: candidate.percentage || 0,
-        id: candidate.id || candidate.candidateId || index + 1,
-        color: candidateColors[index % candidateColors.length],
-      }));
+      setGroupedResults(grouped);
 
-      setResults(transformedData);
+      // Also set the flat results for backward compatibility with existing stats
+      const flatResults = Object.values(grouped).flat();
+      setResults(flatResults);
 
       // Animate in the results
       Animated.timing(fadeAnim, {
@@ -126,34 +143,7 @@ const ChartScreen = ({ navigation }) => {
       }).start();
     } catch (error) {
       console.error("API Error:", error);
-      Alert.alert("Error", "Failed to load results. Showing demo data.");
-
-      // Fallback to demo data with proper structure
-      setResults([
-        {
-          name: "Demo Candidate A",
-          votes: 150,
-          percentage: 60,
-          color: "#6B48FF",
-          id: 1,
-        },
-        {
-          name: "Demo Candidate B",
-          votes: 100,
-          percentage: 40,
-          color: "#FF6B6B",
-          id: 2,
-        },
-      ]);
-
-      // Still animate even with demo data
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }).start();
-    } finally {
-      setLoading(false);
+      Alert.alert("Error", "Failed to load results.");
     }
   };
 
@@ -161,12 +151,12 @@ const ChartScreen = ({ navigation }) => {
     setSelectedElection(election);
     setShowElectionSelector(false);
     fadeAnim.setValue(0);
-    await fetchResults(election);
+    await fetchAllResults([election]); // Fetch only selected election
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchResults(selectedElection);
+    await fetchAllResults(elections); // Refresh all elections
     setRefreshing(false);
   };
 
@@ -218,9 +208,6 @@ const ChartScreen = ({ navigation }) => {
     >
       <View style={styles.candidateHeader}>
         <View style={styles.candidateInfo}>
-          <View style={styles.rankContainer}>
-            <Text style={styles.rankText}>#{index + 1}</Text>
-          </View>
           <View style={styles.candidateDetails}>
             <Text style={[styles.candidateName, isWinner && styles.winnerText]}>
               {candidate.name}
@@ -234,7 +221,6 @@ const ChartScreen = ({ navigation }) => {
           <Text style={[styles.percentageText, { color: candidate.color }]}>
             {candidate.percentage.toFixed(1)}%
           </Text>
-          {isWinner && <Text style={styles.winnerBadge}>🏆</Text>}
         </View>
       </View>
 
@@ -243,19 +229,17 @@ const ChartScreen = ({ navigation }) => {
         color={candidate.color}
         votes={candidate.votes}
       />
-
-      <View style={styles.voteBar}>
-        <View
-          style={[
-            styles.voteBarFill,
-            {
-              width: `${(candidate.votes / maxVotes) * 100}%`,
-              backgroundColor: candidate.color + "40",
-            },
-          ]}
-        />
-      </View>
     </Animated.View>
+  );
+
+  // Election Header Component
+  const ElectionHeader = ({ electionName, candidateCount }) => (
+    <View style={styles.electionHeaderContainer}>
+      <Text style={styles.electionHeaderText}>{electionName}</Text>
+      <Text style={styles.electionHeaderSubtext}>
+        {candidateCount} candidates
+      </Text>
+    </View>
   );
 
   const ElectionSelector = () => (
@@ -345,30 +329,6 @@ const ChartScreen = ({ navigation }) => {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Election Results</Text>
           <Text style={styles.headerSubtitle}>Live Results Dashboard</Text>
-
-          {/* Election Name Display */}
-          {selectedElection && (
-            <TouchableOpacity
-              style={styles.electionNameContainer}
-              onPress={() =>
-                elections.length > 1 && setShowElectionSelector(true)
-              }
-              disabled={elections.length <= 1}
-            >
-              <Text style={styles.electionNameText}>
-                {selectedElection.name ||
-                  selectedElection.title ||
-                  "Current Election"}
-              </Text>
-              {elections.length > 1 && (
-                <Ionicons
-                  name="chevron-down"
-                  size={20}
-                  color="rgba(255, 255, 255, 0.8)"
-                />
-              )}
-            </TouchableOpacity>
-          )}
         </View>
       </LinearGradient>
 
@@ -385,39 +345,46 @@ const ChartScreen = ({ navigation }) => {
             {totalVotes.toLocaleString()}
           </Text>
           <Text style={styles.totalVotesSubtext}>
-            Across {results.length} candidates
+            Across {Object.keys(groupedResults).length} elections
           </Text>
         </LinearGradient>
 
         <View style={styles.quickStats}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{results.length}</Text>
-            <Text style={styles.statLabel}>Candidates</Text>
+            <Text style={styles.statLabel}>Total Candidates</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>
-              {results.length > 0 ? results[0].percentage.toFixed(0) : 0}%
+              {Object.keys(groupedResults).length}
             </Text>
-            <Text style={styles.statLabel}>Leading</Text>
+            <Text style={styles.statLabel}>Elections</Text>
           </View>
         </View>
       </View>
 
-      {/* Results Section */}
+      {/* Results Section with Election Headers */}
       <View style={styles.resultsSection}>
-        <Text style={styles.sectionTitle}>Candidate Rankings</Text>
+        <Text style={styles.sectionTitle}>Election Results</Text>
 
-        {results.length > 0 ? (
-          results
-            .sort((a, b) => b.votes - a.votes)
-            .map((candidate, index) => (
-              <CandidateCard
-                key={candidate.id || index}
-                candidate={candidate}
-                index={index}
-                isWinner={index === 0}
+        {Object.keys(groupedResults).length > 0 ? (
+          Object.entries(groupedResults).map(([electionName, candidates]) => (
+            <View key={electionName} style={styles.electionGroup}>
+              <ElectionHeader
+                electionName={electionName}
+                candidateCount={candidates.length}
               />
-            ))
+
+              {candidates.map((candidate, index) => (
+                <CandidateCard
+                  key={candidate.id || index}
+                  candidate={candidate}
+                  index={index}
+                  isWinner={index === 0}
+                />
+              ))}
+            </View>
+          ))
         ) : (
           <View style={styles.noDataContainer}>
             <Text style={styles.noDataIcon}>📊</Text>
@@ -489,21 +456,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     marginBottom: 16,
   },
-  electionNameContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginTop: 8,
-  },
-  electionNameText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-    marginRight: 8,
-  },
   statsSection: {
     padding: 20,
     paddingTop: 0,
@@ -563,11 +515,32 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 20,
   },
+  electionGroup: {
+    marginBottom: 30,
+  },
+  electionHeaderContainer: {
+    backgroundColor: "rgba(107, 72, 255, 0.15)",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: "#6B48FF",
+  },
+  electionHeaderText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  electionHeaderSubtext: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 14,
+  },
   candidateCard: {
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     padding: 20,
     borderRadius: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.1)",
   },
@@ -586,20 +559,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-  },
-  rankContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(107, 72, 255, 0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  rankText: {
-    color: "#6B48FF",
-    fontSize: 14,
-    fontWeight: "bold",
   },
   candidateDetails: {
     flex: 1,
@@ -624,15 +583,10 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
   },
-  winnerBadge: {
-    fontSize: 16,
-    marginTop: 4,
-  },
   progressBarContainer: {
     height: 8,
     borderRadius: 4,
     overflow: "hidden",
-    marginBottom: 12,
     position: "relative",
   },
   progressBarBackground: {
@@ -647,16 +601,6 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 4,
     zIndex: 1,
-  },
-  voteBar: {
-    height: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  voteBarFill: {
-    height: "100%",
-    borderRadius: 2,
   },
   noDataContainer: {
     alignItems: "center",

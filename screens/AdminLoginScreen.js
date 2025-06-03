@@ -173,7 +173,7 @@ const AdminLoginScreen = ({ navigation }) => {
               Not an admin?{" "}
               <Text
                 style={styles.footerLink}
-                onPress={() => navigation.navigate("AdminRegister")}
+                onPress={() => navigation.navigate("Register")}
               >
                 Sign in as User
               </Text>

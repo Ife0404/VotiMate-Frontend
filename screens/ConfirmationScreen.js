@@ -1,5 +1,5 @@
 // screens/ConfirmationScreen.js
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Modal,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import * as api from "../services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -15,11 +16,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const ConfirmationScreen = ({
   visible,
   onCancel,
+  onError, // Add this new prop
   candidateId,
   electionId,
   navigation,
 }) => {
+  const [loading, setLoading] = useState(false);
+
   const handleConfirm = async () => {
+    setLoading(true);
     try {
       const matricNumber = await AsyncStorage.getItem("matricNumber");
       if (!matricNumber) {
@@ -28,7 +33,7 @@ const ConfirmationScreen = ({
 
       // Make sure to pass electionId to the API call
       await api.vote(candidateId, matricNumber, electionId);
-      onCancel();
+      onCancel(); // Close modal first
       setTimeout(
         () => {
           navigation.navigate("Thanks");
@@ -36,13 +41,28 @@ const ConfirmationScreen = ({
         Platform.OS === "ios" ? 500 : 300
       );
     } catch (error) {
-      Alert.alert(
-        "Error",
-        error.message || "Voting failed. Please try again or log in."
-      );
-      if (error.message.includes("not authenticated")) {
+      console.log("Vote submission error:", error);
+
+      // Close the confirmation modal first
+      onCancel();
+
+      // Check if onError callback is provided (for custom error handling)
+      if (onError) {
+        onError(error);
+      } else {
+        // Fallback to generic alert if no onError handler
+        Alert.alert(
+          "Error",
+          error.message || "Voting failed. Please try again or log in."
+        );
+      }
+
+      // Handle authentication errors
+      if (error.message && error.message.includes("not authenticated")) {
         navigation.navigate("Login");
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,19 +87,32 @@ const ConfirmationScreen = ({
 
           <View style={styles.buttonContainer}>
             <TouchableOpacity
-              style={styles.cancelButton}
+              style={[styles.cancelButton, loading && styles.disabledButton]}
               onPress={onCancel}
               activeOpacity={0.8}
+              disabled={loading}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text
+                style={[
+                  styles.cancelButtonText,
+                  loading && styles.disabledText,
+                ]}
+              >
+                Cancel
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.confirmButton}
+              style={[styles.confirmButton, loading && styles.disabledButton]}
               onPress={handleConfirm}
               activeOpacity={0.8}
+              disabled={loading}
             >
-              <Text style={styles.confirmButtonText}>Confirm</Text>
+              {loading ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.confirmButtonText}>Confirm</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -184,6 +217,12 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  disabledText: {
+    opacity: 0.6,
   },
 });
 

@@ -10,6 +10,7 @@ import {
   Alert,
   Animated,
   StatusBar,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,6 +20,7 @@ import * as api from "../services/api";
 const CandidateScreen = ({ navigation, route }) => {
   const { candidateId } = route.params || { candidateId: "1" };
   const [modalVisible, setModalVisible] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [candidate, setCandidate] = useState(null);
   const [electionId, setElectionId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -83,6 +85,35 @@ const CandidateScreen = ({ navigation, route }) => {
 
   const handleCancel = () => {
     setModalVisible(false);
+  };
+
+  const handleVoteError = (error) => {
+    console.log("Handling vote error:", error);
+
+    // Check if it's a "already voted" error based on the error structure from your logs
+    if (
+      error.status === 400 &&
+      error.details &&
+      error.details.includes("already voted")
+    ) {
+      // Show custom error modal for already voted
+      setErrorModalVisible(true);
+    } else if (error.status === 400) {
+      // Generic 400 error - likely already voted but check message too
+      setErrorModalVisible(true);
+    } else {
+      // Show generic error alert for other errors
+      Alert.alert(
+        "Error",
+        error.message ||
+          error.details ||
+          "Failed to submit vote. Please try again."
+      );
+    }
+  };
+
+  const handleErrorModalClose = () => {
+    setErrorModalVisible(false);
   };
 
   const getInitials = (name) => {
@@ -233,13 +264,52 @@ const CandidateScreen = ({ navigation, route }) => {
         </Animated.View>
       </ScrollView>
 
+      {/* Confirmation Modal */}
       <ConfirmationScreen
         visible={modalVisible}
         onCancel={handleCancel}
+        onError={handleVoteError}
         candidateId={candidateId}
         electionId={electionId}
         navigation={navigation}
       />
+
+      {/* Error Modal for Already Voted */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={errorModalVisible}
+        onRequestClose={handleErrorModalClose}
+      >
+        <View style={styles.errorModalOverlay}>
+          <View style={styles.errorModalContainer}>
+            <LinearGradient
+              colors={["#FF6B6B", "#FF5252"]}
+              style={styles.errorIconContainer}
+            >
+              <Ionicons name="close-circle" size={40} color="#fff" />
+            </LinearGradient>
+
+            <Text style={styles.errorModalTitle}>Already Voted</Text>
+            <Text style={styles.errorModalMessage}>
+              You have already cast your vote in this election. Each voter is
+              allowed only one vote per election.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.errorModalButton}
+              onPress={handleErrorModalClose}
+            >
+              <LinearGradient
+                colors={["#6236FF", "#4B2AFA"]}
+                style={styles.errorModalButtonGradient}
+              >
+                <Text style={styles.errorModalButtonText}>Understood</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -402,6 +472,61 @@ const styles = StyleSheet.create({
     color: "#E8E3FF",
     fontSize: 15,
     lineHeight: 22,
+  },
+  // Error Modal Styles
+  errorModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  errorModalContainer: {
+    backgroundColor: "#1E1B4B",
+    borderRadius: 20,
+    padding: 30,
+    alignItems: "center",
+    maxWidth: 350,
+    width: "100%",
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  errorIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  errorModalTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  errorModalMessage: {
+    fontSize: 16,
+    color: "#E8E3FF",
+    textAlign: "center",
+    lineHeight: 24,
+    marginBottom: 30,
+  },
+  errorModalButton: {
+    borderRadius: 12,
+    overflow: "hidden",
+    width: "100%",
+  },
+  errorModalButtonGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignItems: "center",
+  },
+  errorModalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
 
