@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { adminRegister } from "../services/api";
 
 const AdminRegisterScreen = ({ navigation }) => {
   const [firstName, setFirstName] = useState("");
@@ -62,7 +63,6 @@ const AdminRegisterScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      // TODO: Implement admin registration API call
       const adminData = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -71,19 +71,23 @@ const AdminRegisterScreen = ({ navigation }) => {
         password: password.trim(),
       };
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const response = await adminRegister(adminData);
 
-      Alert.alert(
-        "Registration Successful!",
-        "Your admin account has been created successfully. You can now login.",
-        [
-          {
-            text: "Login Now",
-            onPress: () => navigation.navigate("AdminLogin"),
-          },
-        ]
-      );
+      if (response.success) {
+        Alert.alert(
+          "Registration Successful!",
+          response.message ||
+            "Your admin account has been created successfully. You can now login.",
+          [
+            {
+              text: "Login Now",
+              onPress: () => navigation.navigate("AdminLogin"),
+            },
+          ]
+        );
+      } else {
+        throw new Error(response.message || "Admin registration failed");
+      }
     } catch (error) {
       Alert.alert(
         "Registration Failed",

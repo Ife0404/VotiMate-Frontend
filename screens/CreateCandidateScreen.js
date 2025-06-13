@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -14,88 +14,34 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
-import { Picker } from "@react-native-picker/picker";
 import * as api from "../services/api";
 
-const CreateCandidateScreen = ({ navigation, route }) => {
-  const { candidate, isEditing = false } = route.params || {};
-  
+const CreateCandidateScreen = ({ navigation }) => {
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
-    matricNumber: "",
-    department: "",
     level: "",
     position: "",
-    manifesto: "",
-    electionId: "",
+    manifesto: "", // Changed from campaignPromises to manifesto
+    electionName: "", // Changed from selectedElectionId to electionName
     profileImage: null,
   });
 
-  const [elections, setElections] = useState([]);
-  const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [imageUri, setImageUri] = useState(null);
-
-  const departments = [
-    "Computer Science",
-    "Information Technology", 
-    "Software Engineering",
-    "Cybersecurity",
-    "Data Science"
-  ];
-
-  const levels = ["100", "200", "300", "400", "500"];
-
-  useEffect(() => {
-    fetchElections();
-    if (isEditing && candidate) {
-      setFormData({
-        ...candidate,
-        electionId: candidate.electionId || "",
-      });
-      setImageUri(candidate.profileImage);
-    }
-  }, [candidate, isEditing]);
-
-  const fetchElections = async () => {
-    try {
-      const response = await api.getActiveElections();
-      setElections(response);
-    } catch (error) {
-      console.error("Error fetching elections:", error);
-      Alert.alert("Error", "Failed to load elections");
-    }
-  };
-
-  const fetchPositions = async (electionId) => {
-    try {
-      const response = await api.getElectionPositions(electionId);
-      setPositions(response);
-    } catch (error) {
-      console.error("Error fetching positions:", error);
-      setPositions([]);
-    }
-  };
-
-  const handleElectionChange = (electionId) => {
-    setFormData({ ...formData, electionId, position: "" });
-    if (electionId) {
-      fetchPositions(electionId);
-    } else {
-      setPositions([]);
-    }
-  };
 
   const handleInputChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
   };
 
   const pickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
+    const permissionResult =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permissionResult.granted === false) {
-      Alert.alert("Permission Required", "Permission to access camera roll is required!");
+      Alert.alert(
+        "Permission Required",
+        "Permission to access camera roll is required!"
+      );
       return;
     }
 
@@ -114,9 +60,11 @@ const CreateCandidateScreen = ({ navigation, route }) => {
 
   const takePhoto = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    
     if (permissionResult.granted === false) {
-      Alert.alert("Permission Required", "Permission to access camera is required!");
+      Alert.alert(
+        "Permission Required",
+        "Permission to access camera is required!"
+      );
       return;
     }
 
@@ -133,27 +81,21 @@ const CreateCandidateScreen = ({ navigation, route }) => {
   };
 
   const showImagePicker = () => {
-    Alert.alert(
-      "Select Image",
-      "Choose how you want to add a photo",
-      [
-        { text: "Camera", onPress: takePhoto },
-        { text: "Gallery", onPress: pickImage },
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
+    Alert.alert("Select Image", "Choose how you want to add a photo", [
+      { text: "Camera", onPress: takePhoto },
+      { text: "Gallery", onPress: pickImage },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const validateForm = () => {
     const requiredFields = [
       { field: "firstName", name: "First Name" },
       { field: "lastName", name: "Last Name" },
-      { field: "matricNumber", name: "Matric Number" },
-      { field: "department", name: "Department" },
       { field: "level", name: "Level" },
       { field: "position", name: "Position" },
-      { field: "electionId", name: "Election" },
-      { field: "manifesto", name: "Manifesto" },
+      { field: "electionName", name: "Election Name" }, // Updated field name
+      { field: "manifesto", name: "Manifesto" }, // Updated field name
     ];
 
     for (const { field, name } of requiredFields) {
@@ -168,6 +110,12 @@ const CreateCandidateScreen = ({ navigation, route }) => {
       return false;
     }
 
+    // Validate level is a number
+    if (isNaN(parseInt(formData.level))) {
+      Alert.alert("Error", "Level must be a valid number");
+      return false;
+    }
+
     return true;
   };
 
@@ -176,32 +124,16 @@ const CreateCandidateScreen = ({ navigation, route }) => {
 
     try {
       setLoading(true);
-      
-      const candidateData = new FormData();
-      Object.keys(formData).forEach(key => {
-        if (key === 'profileImage' && formData[key]) {
-          candidateData.append('profileImage', {
-            uri: formData[key].uri,
-            type: 'image/jpeg',
-            name: 'profile.jpg',
-          });
-        } else if (key !== 'profileImage') {
-          candidateData.append(key, formData[key]);
-        }
-      });
-
-      if (isEditing) {
-        await api.updateCandidate(candidate.id, candidateData);
-        Alert.alert("Success", "Candidate updated successfully");
-      } else {
-        await api.createCandidate(candidateData);
-        Alert.alert("Success", "Candidate created successfully");
-      }
-      
-      navigation.goBack();
+      await api.createCandidate(formData);
+      Alert.alert("Success", "Candidate created successfully", [
+        {
+          text: "OK",
+          onPress: () => navigation.goBack(),
+        },
+      ]);
     } catch (error) {
-      console.error("Error saving candidate:", error);
-      Alert.alert("Error", `Failed to ${isEditing ? 'update' : 'create'} candidate`);
+      console.error("Error creating candidate:", error);
+      Alert.alert("Error", `Failed to create candidate: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -210,8 +142,6 @@ const CreateCandidateScreen = ({ navigation, route }) => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#14104D" />
-
-      {/* Header */}
       <LinearGradient
         colors={["#14104D", "#1a1461", "#241b7a"]}
         style={styles.headerGradient}
@@ -223,35 +153,31 @@ const CreateCandidateScreen = ({ navigation, route }) => {
           >
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerText}>
-            {isEditing ? "Edit Candidate" : "Add Candidate"}
-          </Text>
+          <Text style={styles.headerText}>Add Candidate</Text>
           <View style={styles.placeholder} />
         </View>
       </LinearGradient>
 
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Profile Image */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Profile Photo</Text>
           <View style={styles.card}>
-            <TouchableOpacity style={styles.imageContainer} onPress={showImagePicker}>
+            <TouchableOpacity
+              style={styles.imageContainer}
+              onPress={showImagePicker}
+            >
               {imageUri ? (
                 <Image source={{ uri: imageUri }} style={styles.profileImage} />
               ) : (
                 <View style={styles.imagePlaceholder}>
-                  <Ionicons name="camera" size={32} color="#6C4EF2" />
+                  <Ionicons name="add" size={32} color="#6C4EF2" />
                   <Text style={styles.imagePlaceholderText}>Add Photo</Text>
                 </View>
               )}
-              <View style={styles.imageOverlay}>
-                <Ionicons name="camera" size={20} color="#fff" />
-              </View>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Personal Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
           <View style={styles.card}>
@@ -279,108 +205,65 @@ const CreateCandidateScreen = ({ navigation, route }) => {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Matric Number *</Text>
+              <Text style={styles.label}>Level *</Text>
               <TextInput
                 style={styles.input}
-                value={formData.matricNumber}
-                onChangeText={(text) => handleInputChange("matricNumber", text)}
-                placeholder="Enter matric number"
+                value={formData.level}
+                onChangeText={(text) => handleInputChange("level", text)}
+                placeholder="Enter level (e.g., 100, 200, 300, etc.)"
                 placeholderTextColor="#999"
-                autoCapitalize="characters"
+                keyboardType="numeric"
               />
-            </View>
-
-            <View style={styles.row}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-                <Text style={styles.label}>Department *</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={formData.department}
-                    onValueChange={(value) => handleInputChange("department", value)}
-                    style={styles.picker}
-                  >
-                    <Picker.Item label="Select Department" value="" />
-                    {departments.map((dept) => (
-                      <Picker.Item key={dept} label={dept} value={dept} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
-              <View style={[styles.inputGroup, { flex: 1, marginLeft: 10 }]}>
-                <Text style={styles.label}>Level *</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={formData.level}
-                    onValueChange={(value) => handleInputChange("level", value)}
-                    style={styles.picker}
-                  >
-                    <Picker.Item label="Select Level" value="" />
-                    {levels.map((level) => (
-                      <Picker.Item key={level} label={`${level} Level`} value={level} />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
             </View>
           </View>
         </View>
 
-        {/* Election Details */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Election Details</Text>
           <View style={styles.card}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Election *</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={formData.electionId}
-                  onValueChange={handleElectionChange}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Select Election" value="" />
-                  {elections.map((election) => (
-                    <Picker.Item 
-                      key={election.id} 
-                      label={election.title} 
-                      value={election.id} 
-                    />
-                  ))}
-                </Picker>
-              </View>
+              <Text style={styles.label}>Election Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.electionName}
+                onChangeText={(text) => handleInputChange("electionName", text)}
+                placeholder="Enter election name (e.g., Student Union Election 2024)"
+                placeholderTextColor="#999"
+              />
+              <Text style={styles.helperText}>
+                💡 If this election doesn't exist, it will be created
+                automatically
+              </Text>
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Position *</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={formData.position}
-                  onValueChange={(value) => handleInputChange("position", value)}
-                  style={styles.picker}
-                  enabled={positions.length > 0}
-                >
-                  <Picker.Item label="Select Position" value="" />
-                  {positions.map((position) => (
-                    <Picker.Item key={position} label={position} value={position} />
-                  ))}
-                </Picker>
-              </View>
+              <TextInput
+                style={styles.input}
+                value={formData.position}
+                onChangeText={(text) => handleInputChange("position", text)}
+                placeholder="Enter position (e.g., President, Secretary, etc.)"
+                placeholderTextColor="#999"
+              />
             </View>
           </View>
         </View>
 
-        {/* Manifesto */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Manifesto</Text>
           <View style={styles.card}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
-                Manifesto * <Text style={styles.charCount}>({formData.manifesto.length}/100 min)</Text>
+                Manifesto *{" "}
+                <Text style={styles.charCount}>
+                  ({formData.manifesto.length}/100 min)
+                </Text>
               </Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={formData.manifesto}
                 onChangeText={(text) => handleInputChange("manifesto", text)}
-                placeholder="Write your manifesto (minimum 100 characters)"
+                placeholder="Write your manifesto - your vision, goals, and promises to the electorate (minimum 100 characters)"
                 placeholderTextColor="#999"
                 multiline
                 numberOfLines={6}
@@ -390,7 +273,6 @@ const CreateCandidateScreen = ({ navigation, route }) => {
           </View>
         </View>
 
-        {/* Submit Button */}
         <TouchableOpacity
           style={[styles.submitButton, loading && styles.disabledButton]}
           onPress={handleSubmit}
@@ -401,23 +283,20 @@ const CreateCandidateScreen = ({ navigation, route }) => {
             style={styles.submitGradient}
           >
             <Text style={styles.submitText}>
-              {loading ? "Saving..." : (isEditing ? "Update Candidate" : "Add Candidate")}
+              {loading ? "Creating..." : "Add Candidate"}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
+
+        <View style={styles.bottomPadding} />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#14104D",
-  },
-  headerGradient: {
-    paddingBottom: 20,
-  },
+  safeArea: { flex: 1, backgroundColor: "#14104D" },
+  headerGradient: { paddingBottom: 20 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -433,22 +312,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  headerText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  placeholder: {
-    width: 40,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: "#14104D",
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginTop: 20,
-  },
+  headerText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  placeholder: { width: 40 },
+  container: { flex: 1, backgroundColor: "#14104D" },
+  section: { paddingHorizontal: 20, marginTop: 20 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -465,15 +332,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
   },
-  imageContainer: {
-    alignSelf: "center",
-    position: "relative",
-  },
-  profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
+  imageContainer: { alignSelf: "center", position: "relative" },
+  profileImage: { width: 120, height: 120, borderRadius: 60 },
   imagePlaceholder: {
     width: 120,
     height: 120,
@@ -491,36 +351,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: "600",
   },
-  imageOverlay: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    backgroundColor: "#6C4EF2",
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 3,
-    borderColor: "#fff",
-  },
-  row: {
-    flexDirection: "row",
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 8,
-  },
-  charCount: {
-    fontSize: 12,
-    color: "#666",
-    fontWeight: "normal",
-  },
+  row: { flexDirection: "row" },
+  inputGroup: { marginBottom: 20 },
+  label: { fontSize: 16, fontWeight: "600", color: "#333", marginBottom: 8 },
+  charCount: { fontSize: 12, color: "#666", fontWeight: "normal" },
   input: {
     backgroundColor: "#f8f9fa",
     borderRadius: 12,
@@ -531,40 +365,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e0e0e0",
   },
-  textArea: {
-    height: 120,
-    textAlignVertical: "top",
-  },
-  pickerContainer: {
-    backgroundColor: "#f8f9fa",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    overflow: "hidden",
-  },
-  picker: {
-    height: 50,
-    color: "#333",
+  textArea: { height: 120, textAlignVertical: "top" },
+  helperText: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
+    fontStyle: "italic",
   },
   submitButton: {
     marginHorizontal: 20,
-    marginTop: 30,
-    marginBottom: 40,
+    marginTop: 20,
     borderRadius: 16,
     overflow: "hidden",
   },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  submitGradient: {
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  submitText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
+  disabledButton: { opacity: 0.6 },
+  submitGradient: { paddingVertical: 16, alignItems: "center" },
+  submitText: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
+  bottomPadding: { height: 30 },
 });
-
 export default CreateCandidateScreen;

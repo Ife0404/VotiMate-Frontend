@@ -20,12 +20,13 @@ import AdminMainScreen from "../screens/AdminMainScreen";
 import AdminRegisterScreen from "../screens/AdminRegisterScreen";
 import CreateElectionScreen from "../screens/CreateElectionScreen";
 import CreateCandidateScreen from "../screens/CreateCandidateScreen";
-import ElectionManagementScreen from "../screens/ElectionManagementScreen"
+import ElectionManagementScreen from "../screens/ElectionManagementScreen";
 import EditElectionScreen from "../screens/EditElectionScreen";
 import AdminProfileScreen from "../screens/AdminProfileScreen";
 import CandidateManagementScreen from "../screens/CandidateManagementScreen";
 import EditCandidateScreen from "../screens/EditCandidateScreen";
 import OnboardingScreen from "../screens/OnboardingScreen";
+
 
 const Stack = createStackNavigator();
 
