@@ -90,23 +90,22 @@ const CandidateScreen = ({ navigation, route }) => {
   const handleVoteError = (error) => {
     console.log("Handling vote error:", error);
 
-    // Check if it's a "already voted" error based on the error structure from your logs
+    // Check specifically for "already voted" error
     if (
       error.status === 400 &&
       error.details &&
-      error.details.includes("already voted")
+      (error.details.includes("already voted") ||
+        error.details.includes("already cast") ||
+        error.details.includes("duplicate vote"))
     ) {
       // Show custom error modal for already voted
       setErrorModalVisible(true);
-    } else if (error.status === 400) {
-      // Generic 400 error - likely already voted but check message too
-      setErrorModalVisible(true);
     } else {
-      // Show generic error alert for other errors
+      // Show generic error alert for all other errors (including voting period errors)
       Alert.alert(
         "Error",
-        error.message ||
-          error.details ||
+        error.details ||
+          error.message ||
           "Failed to submit vote. Please try again."
       );
     }

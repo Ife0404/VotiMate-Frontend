@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,31 +7,36 @@ import {
   SafeAreaView,
   StatusBar,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { getElections, getCandidates } from "../services/api"; // Adjust the import path as needed
 
 const AdminMainScreen = ({ navigation }) => {
-  const stats = [
+  const [stats, setStats] = useState([
     {
       title: "Active Elections",
-      count: "3",
-      icon: "checkmark-circle", // Changed from "ballot" to valid icon
+      count: "0",
+      icon: "checkmark-circle",
       color: ["#6C4EF2", "#5A3ED9"],
+      loading: true,
     },
     {
       title: "Total Candidates",
-      count: "24",
+      count: "0",
       icon: "people",
       color: ["#FF6B6B", "#FF5252"],
+      loading: true,
     },
     {
       title: "Registered Voters",
-      count: "1,247",
+      count: "0",
       icon: "person-circle",
       color: ["#4ECDC4", "#44A08D"],
+      loading: true,
     },
-  ];
+  ]);
 
   const quickActions = [
     {
@@ -40,11 +45,62 @@ const AdminMainScreen = ({ navigation }) => {
       action: () => navigation.navigate("CreateElection"),
     },
     {
-      title: "Add Candidate",
+      title: "Create Candidate",
       icon: "person-add",
       action: () => navigation.navigate("CreateCandidate"),
     },
   ];
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      // Fetch elections and count active ones
+      const elections = await getElections();
+      const activeElections = elections.filter(
+        (election) => election.status === "ACTIVE"
+      ).length;
+
+      // Fetch all candidates
+      const candidates = await getCandidates();
+      const totalCandidates = candidates.length;
+
+      // Note: Since there's no specific endpoint for registered voters count,
+      // you might need to add one to your backend or use a placeholder
+      // For now, I'll leave it as a placeholder that you can update
+      const registeredVoters = "N/A"; // Replace with actual API call when available
+
+      setStats((prevStats) => [
+        {
+          ...prevStats[0],
+          count: activeElections.toString(),
+          loading: false,
+        },
+        {
+          ...prevStats[1],
+          count: totalCandidates.toString(),
+          loading: false,
+        },
+        {
+          ...prevStats[2],
+          count: registeredVoters,
+          loading: false,
+        },
+      ]);
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+      // Keep loading state or show error state
+      setStats((prevStats) =>
+        prevStats.map((stat) => ({
+          ...stat,
+          loading: false,
+          count: "Error",
+        }))
+      );
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -79,7 +135,15 @@ const AdminMainScreen = ({ navigation }) => {
                   <View style={styles.statIconContainer}>
                     <Ionicons name={stat.icon} size={28} color="#fff" />
                   </View>
-                  <Text style={styles.statCount}>{stat.count}</Text>
+                  {stat.loading ? (
+                    <ActivityIndicator
+                      color="#fff"
+                      size="small"
+                      style={styles.loader}
+                    />
+                  ) : (
+                    <Text style={styles.statCount}>{stat.count}</Text>
+                  )}
                   <Text style={styles.statTitle}>{stat.title}</Text>
                 </LinearGradient>
               </View>
@@ -189,7 +253,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingBottom: 24, // Added padding bottom to prevent cutting
+    paddingBottom: 24,
   },
   section: {
     marginBottom: 30,
@@ -203,23 +267,26 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    flexWrap: "wrap", // Added to handle wrapping if needed
+    flexWrap: "wrap",
   },
   statCard: {
     flex: 1,
     marginHorizontal: 4,
     borderRadius: 16,
     overflow: "hidden",
-    minHeight: 120, // Added minimum height to prevent cutting
+    minHeight: 120,
   },
   statGradient: {
     padding: 16,
     alignItems: "center",
-    flex: 1, // Added to fill the card height
-    justifyContent: "center", // Center content vertically
+    flex: 1,
+    justifyContent: "center",
   },
   statIconContainer: {
     marginBottom: 8,
+  },
+  loader: {
+    marginVertical: 8,
   },
   statCount: {
     color: "#fff",
@@ -231,7 +298,7 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.9)",
     fontSize: 12,
     textAlign: "center",
-    flexShrink: 1, // Prevent text from being cut off
+    flexShrink: 1,
   },
   actionsContainer: {
     backgroundColor: "rgba(255, 255, 255, 0.05)",
@@ -267,13 +334,13 @@ const styles = StyleSheet.create({
   managementCard: {
     borderRadius: 16,
     overflow: "hidden",
-    minHeight: 140, // Added minimum height to prevent cutting
+    minHeight: 140,
   },
   managementGradient: {
     padding: 20,
     alignItems: "center",
-    flex: 1, // Added to fill the card height
-    justifyContent: "center", // Center content vertically
+    flex: 1,
+    justifyContent: "center",
   },
   managementTitle: {
     color: "#fff",
@@ -281,13 +348,13 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginTop: 12,
     marginBottom: 4,
-    textAlign: "center", // Center align text
+    textAlign: "center",
   },
   managementSubtitle: {
     color: "rgba(255, 255, 255, 0.8)",
     fontSize: 14,
     textAlign: "center",
-    flexShrink: 1, // Prevent text from being cut off
+    flexShrink: 1,
   },
 });
 

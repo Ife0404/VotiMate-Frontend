@@ -1,285 +1,347 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Alert,
   ScrollView,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
+  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  getAdminProfile,
+  updateAdminProfile,
+  adminLogout,
+} from "../services/api";
 
 const AdminProfileScreen = ({ navigation }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [adminData, setAdminData] = useState({
+    firstName: "",
+    lastName: "",
+    matricNumber: "",
+    department: "",
+  });
+  const [originalData, setOriginalData] = useState({}); // Store original data for cancel
+  const [fadeAnim] = useState(new Animated.Value(0));
   const [loading, setLoading] = useState(false);
 
-  // Sample admin data - replace with actual data from your backend
-  const [adminData, setAdminData] = useState({
-    firstName: "John",
-    lastName: "Doe",
-    matricNumber: "ADM001",
-    department: "Computer Science",
-  });
+  useEffect(() => {
+    const fetchAdminProfile = async () => {
+      try {
+        setLoading(true);
+        const data = await getAdminProfile();
+        setAdminData(data);
+        setOriginalData(data); // Store original data
+      } catch (error) {
+        console.error("Failed to load admin profile:", error);
+        Alert.alert(
+          "Error",
+          error.message || "Failed to load profile. Please try again."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAdminProfile();
 
-  const [editData, setEditData] = useState({ ...adminData });
-
-  const handleEdit = () => {
-    setIsEditing(true);
-    setEditData({ ...adminData });
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setEditData({ ...adminData });
-  };
+    // Fade in animation
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   const handleSave = async () => {
     if (
-      !editData.firstName.trim() ||
-      !editData.lastName.trim() ||
-      !editData.matricNumber.trim() ||
-      !editData.department.trim()
+      !adminData.firstName.trim() ||
+      !adminData.lastName.trim() ||
+      !adminData.matricNumber.trim() ||
+      !adminData.department.trim()
     ) {
       Alert.alert("Error", "Please fill in all fields.");
       return;
     }
 
-    setLoading(true);
     try {
-      // TODO: Implement update profile API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      setAdminData({ ...editData });
+      setLoading(true);
+      const result = await updateAdminProfile(adminData);
+      setOriginalData(adminData); // Update original data after successful save
       setIsEditing(false);
-      Alert.alert("Success", "Profile updated successfully!");
+      Alert.alert("Success", result.message || "Profile updated successfully");
     } catch (error) {
-      Alert.alert("Error", "Failed to update profile. Please try again.");
+      console.error("Update profile error:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to update profile. Please try again."
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const handleCancel = () => {
+    setAdminData(originalData); // Reset to original data
+    setIsEditing(false);
+  };
+
   const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to logout?", [
+    Alert.alert("Confirm Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Logout",
         style: "destructive",
-        onPress: () => navigation.replace("UserTypeSelection"),
+        onPress: async () => {
+          try {
+            setLoading(true);
+            await adminLogout();
+            // Replace with the correct screen name (verify in your navigation setup)
+            navigation.replace("Onboarding"); // Changed from UserTypeSelection
+          } catch (error) {
+            console.error("Logout error:", error);
+            Alert.alert("Error", error.message || "Failed to logout");
+            // Still navigate to Onboarding on failure to clear session
+            navigation.replace("Onboarding");
+          } finally {
+            setLoading(false);
+          }
+        },
       },
     ]);
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#14104D" />
 
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButtonRow}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-
-        {!isEditing && (
-          <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-            <Ionicons name="create-outline" size={24} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.profileHeader}>
-          <LinearGradient
-            colors={["#FF6B6B", "#FF5252"]}
-            style={styles.avatarContainer}
+      {/* Header with gradient */}
+      <LinearGradient
+        colors={["#14104D", "#1a1461", "#241b7a"]}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
           >
-            <Ionicons name="shield-checkmark" size={50} color="#fff" />
-          </LinearGradient>
-          <Text style={styles.adminRole}>Administrator</Text>
-          <Text style={styles.adminName}>
-            {adminData.firstName} {adminData.lastName}
-          </Text>
+            <View style={styles.backButtonContainer}>
+              <Ionicons name="chevron-back" size={24} color="#fff" />
+            </View>
+          </TouchableOpacity>
+
+          <Text style={styles.headerText}>Admin Profile</Text>
+
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => setIsEditing(!isEditing)}
+          >
+            <Ionicons
+              name={isEditing ? "close" : "create-outline"}
+              size={24}
+              color="#fff"
+            />
+          </TouchableOpacity>
         </View>
+      </LinearGradient>
 
-        <View style={styles.formContainer}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>First Name</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color="#666"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, !isEditing && styles.inputDisabled]}
-                value={isEditing ? editData.firstName : adminData.firstName}
-                onChangeText={(text) =>
-                  setEditData({ ...editData, firstName: text })
-                }
-                editable={isEditing && !loading}
-                placeholder="First Name"
-              />
+      <ScrollView
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+          {/* Profile Details Card */}
+          <View style={styles.detailsCard}>
+            <Text style={styles.cardTitle}>Administrator Information</Text>
+
+            {/* First Name */}
+            <View style={styles.fieldContainer}>
+              <Text style={styles.fieldLabel}>First Name</Text>
+              {isEditing ? (
+                <TextInput
+                  style={styles.input}
+                  value={adminData.firstName}
+                  onChangeText={(text) =>
+                    setAdminData({ ...adminData, firstName: text })
+                  }
+                  placeholder="Enter first name"
+                  placeholderTextColor="#999"
+                  editable={!loading}
+                />
+              ) : (
+                <Text style={styles.fieldValue}>
+                  {adminData.firstName || "Not set"}
+                </Text>
+              )}
+            </View>
+
+            {/* Last Name */}
+            <View style={styles.fieldContainer}>
+              <Text style={styles.fieldLabel}>Last Name</Text>
+              {isEditing ? (
+                <TextInput
+                  style={styles.input}
+                  value={adminData.lastName}
+                  onChangeText={(text) =>
+                    setAdminData({ ...adminData, lastName: text })
+                  }
+                  placeholder="Enter last name"
+                  placeholderTextColor="#999"
+                  editable={!loading}
+                />
+              ) : (
+                <Text style={styles.fieldValue}>
+                  {adminData.lastName || "Not set"}
+                </Text>
+              )}
+            </View>
+
+            {/* Matric Number */}
+            <View style={styles.fieldContainer}>
+              <Text style={styles.fieldLabel}>Matric Number</Text>
+              {isEditing ? (
+                <TextInput
+                  style={styles.input}
+                  value={adminData.matricNumber}
+                  onChangeText={(text) =>
+                    setAdminData({ ...adminData, matricNumber: text })
+                  }
+                  placeholder="Enter matric number"
+                  placeholderTextColor="#999"
+                  editable={!loading}
+                />
+              ) : (
+                <Text style={styles.fieldValue}>
+                  {adminData.matricNumber || "Not set"}
+                </Text>
+              )}
+            </View>
+
+            {/* Department */}
+            <View style={styles.fieldContainer}>
+              <Text style={styles.fieldLabel}>Department</Text>
+              {isEditing ? (
+                <TextInput
+                  style={styles.input}
+                  value={adminData.department}
+                  onChangeText={(text) =>
+                    setAdminData({ ...adminData, department: text })
+                  }
+                  placeholder="Enter department"
+                  placeholderTextColor="#999"
+                  editable={!loading}
+                />
+              ) : (
+                <Text style={styles.fieldValue}>
+                  {adminData.department || "Not set"}
+                </Text>
+              )}
             </View>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Last Name</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color="#666"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, !isEditing && styles.inputDisabled]}
-                value={isEditing ? editData.lastName : adminData.lastName}
-                onChangeText={(text) =>
-                  setEditData({ ...editData, lastName: text })
-                }
-                editable={isEditing && !loading}
-                placeholder="Last Name"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Matric Number</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="card-outline"
-                size={20}
-                color="#666"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, !isEditing && styles.inputDisabled]}
-                value={
-                  isEditing ? editData.matricNumber : adminData.matricNumber
-                }
-                onChangeText={(text) =>
-                  setEditData({ ...editData, matricNumber: text })
-                }
-                editable={isEditing && !loading}
-                placeholder="Matric Number"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Department</Text>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="school-outline"
-                size={20}
-                color="#666"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, !isEditing && styles.inputDisabled]}
-                value={isEditing ? editData.department : adminData.department}
-                onChangeText={(text) =>
-                  setEditData({ ...editData, department: text })
-                }
-                editable={isEditing && !loading}
-                placeholder="Department"
-              />
-            </View>
-          </View>
-
-          {isEditing && (
-            <View style={styles.buttonGroup}>
-              <TouchableOpacity
-                style={[styles.button, styles.cancelButton]}
-                onPress={handleCancel}
-                disabled={loading}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.button,
-                  styles.saveButton,
-                  loading && styles.buttonDisabled,
-                ]}
-                onPress={handleSave}
-                disabled={loading}
-              >
-                <LinearGradient
-                  colors={loading ? ["#999", "#999"] : ["#4ECDC4", "#44A08D"]}
-                  style={styles.saveButtonGradient}
+          {/* Action Buttons */}
+          <View style={styles.buttonContainer}>
+            {isEditing ? (
+              <View style={styles.editButtonsContainer}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.cancelButton]}
+                  onPress={handleCancel}
+                  disabled={loading}
                 >
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons
-                        name="checkmark"
-                        size={20}
-                        color="#fff"
-                        style={styles.buttonIcon}
-                      />
-                      <Text style={styles.saveButtonText}>Save Changes</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
 
-        {!isEditing && (
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity
-              style={[styles.actionItem, styles.logoutItem]}
-              onPress={handleLogout}
-            >
-              <View
-                style={[styles.actionIconContainer, styles.logoutIconContainer]}
-              >
-                <Ionicons name="log-out-outline" size={24} color="#FF6B6B" />
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.saveButton]}
+                  onPress={handleSave}
+                  disabled={loading}
+                >
+                  <LinearGradient
+                    colors={loading ? ["#999", "#999"] : ["#4ECDC4", "#44A08D"]}
+                    style={styles.saveButtonGradient}
+                  >
+                    {loading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons
+                          name="checkmark"
+                          size={20}
+                          color="#fff"
+                          style={styles.buttonIcon}
+                        />
+                        <Text style={styles.saveButtonText}>Save Changes</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
-              <Text style={[styles.actionText, styles.logoutText]}>Logout</Text>
-              <Ionicons name="chevron-forward" size={20} color="#FF6B6B" />
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.logoutButton}
+                onPress={handleLogout}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#ff4757" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="log-out-outline"
+                      size={20}
+                      color="#ff4757"
+                      style={styles.buttonIcon}
+                    />
+                    <Text style={styles.logoutButtonText}>Logout</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
-        )}
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: "#14104D",
   },
+  headerGradient: {
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
   header: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
   },
-  backButtonRow: {
-    flexDirection: "row",
+  backButton: {
+    padding: 5,
+  },
+  backButtonContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    justifyContent: "center",
     alignItems: "center",
   },
-  backText: {
+  headerText: {
     color: "#fff",
-    marginLeft: 8,
-    fontSize: 16,
+    fontSize: 20,
+    fontWeight: "bold",
   },
   editButton: {
     width: 40,
@@ -289,143 +351,117 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  container: {
+    flex: 1,
+    backgroundColor: "#14104D",
+  },
+  scrollContent: {
+    paddingBottom: 30,
+  },
   content: {
     flex: 1,
-    paddingHorizontal: 24,
-  },
-  profileHeader: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  adminRole: {
-    color: "#FF6B6B",
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  adminName: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: "bold",
-  },
-  formContainer: {
-    marginBottom: 30,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "500",
-    marginBottom: 8,
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-  },
-  inputIcon: {
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
-    padding: 16,
-    fontSize: 16,
-    color: "#333",
-  },
-  inputDisabled: {
-    color: "#666",
-  },
-  buttonGroup: {
-    flexDirection: "row",
-    gap: 12,
     marginTop: 20,
   },
-  button: {
-    flex: 1,
+  detailsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    marginHorizontal: 20,
+    marginTop: 40,
+    padding: 24,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 20,
+  },
+  fieldContainer: {
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
+    marginBottom: 8,
+  },
+  fieldValue: {
+    fontSize: 16,
+    color: "#333",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#f8f9fa",
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e9ecef",
+  },
+  input: {
+    fontSize: 16,
+    color: "#333",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#4ECDC4",
+  },
+  buttonContainer: {
+    paddingHorizontal: 20,
+    marginTop: 30,
+  },
+  editButtonsContainer: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    borderRadius: 16,
     overflow: "hidden",
   },
   cancelButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    backgroundColor: "#f8f9fa",
+    borderWidth: 2,
+    borderColor: "#e9ecef",
     paddingVertical: 16,
     alignItems: "center",
   },
   cancelButtonText: {
-    color: "#fff",
+    color: "#666",
     fontSize: 16,
     fontWeight: "600",
   },
-  saveButton: {
-    elevation: 4,
-    shadowColor: "#4ECDC4",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
   saveButtonGradient: {
-    paddingVertical: 16,
-    alignItems: "center",
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
-  },
-  buttonIcon: {
-    marginRight: 8,
+    paddingVertical: 18,
   },
   saveButtonText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "bold",
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  actionsContainer: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 16,
-    padding: 8,
-    marginBottom: 40,
-  },
-  actionItem: {
+  logoutButton: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    marginVertical: 4,
-  },
-  actionIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(108, 78, 242, 0.2)",
     justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
+    backgroundColor: "#fff",
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#ff4757",
   },
-  actionText: {
-    flex: 1,
-    color: "#fff",
+  logoutButtonText: {
+    color: "#ff4757",
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "600",
   },
-  logoutItem: {
-    marginTop: 8,
-  },
-  logoutIconContainer: {
-    backgroundColor: "rgba(255, 107, 107, 0.2)",
-  },
-  logoutText: {
-    color: "#FF6B6B",
+  buttonIcon: {
+    marginRight: 8,
   },
 });
 

@@ -78,6 +78,7 @@ const LoginScreen = ({ navigation }) => {
         console.log("Photo captured:", photo.uri);
 
         const embeddingResponse = await api.generateEmbedding(photo.uri);
+        console.log("Embedding response:", embeddingResponse);
 
         if (
           embeddingResponse &&
@@ -90,15 +91,27 @@ const LoginScreen = ({ navigation }) => {
             throw new Error("Empty face embedding data received");
           }
 
+          console.log("Face embedding length:", faceEmbedding.length);
+
           const loginData = {
             matricNumber: matricNumber.trim(),
             faceEmbedding: faceEmbedding,
             faceIdAttempts: failedAttempts,
           };
 
-          const loginResponse = await api.login(loginData);
+          console.log("Attempting face login with data:", {
+            matricNumber: loginData.matricNumber,
+            faceIdAttempts: loginData.faceIdAttempts,
+            embeddingLength: loginData.faceEmbedding.length,
+          });
 
-          if (loginResponse.success && loginResponse.token) {
+          // Call the API and handle the response
+          const loginResponse = await api.login(loginData);
+          console.log("Login response received:", loginResponse);
+
+          // Check if we got a valid response
+          if (loginResponse && loginResponse.token) {
+            console.log("Login successful, storing token");
             await AsyncStorage.setItem("matricNumber", matricNumber.trim());
             await AsyncStorage.setItem("userToken", loginResponse.token);
 
@@ -109,9 +122,11 @@ const LoginScreen = ({ navigation }) => {
               },
             ]);
           } else {
+            console.log("Login failed - no token in response");
             handleFailedRecognition();
           }
         } else {
+          console.error("Invalid embedding response:", embeddingResponse);
           Alert.alert(
             "Face Recognition Failed",
             "Failed to process your face data. Please try again.",
@@ -130,27 +145,103 @@ const LoginScreen = ({ navigation }) => {
         }
       } catch (error) {
         console.error("Face login error:", error);
-        Alert.alert(
-          "Face Login Failed",
-          error.message || "Something went wrong. Please try again.",
-          [
-            { text: "Try Again", onPress: () => {} },
-            {
-              text: "Use Password",
-              onPress: () => {
-                setShowCamera(false);
-                setShowPasswordLogin(true);
+
+        // Handle different types of errors
+        if (error && typeof error === "object" && error.message) {
+          // This is our structured error
+          const errorMessage = error.message;
+          const attempts = error.attempts || failedAttempts;
+
+          console.log(
+            "Structured error - message:",
+            errorMessage,
+            "attempts:",
+            attempts
+          );
+
+          // Update attempts if provided
+          if (
+            error.attempts !== undefined &&
+            error.attempts !== failedAttempts
+          ) {
+            setFailedAttempts(error.attempts);
+          }
+
+          // Check if we should fallback to password
+          if (attempts >= 3) {
+            setShowCamera(false);
+            setShowPasswordLogin(true);
+            Alert.alert(
+              "Face Recognition Failed",
+              "Face recognition failed after 3 attempts. Please use your password to login.",
+              [{ text: "OK" }]
+            );
+          } else {
+            Alert.alert("Face Login Failed", errorMessage, [
+              {
+                text: "Try Again",
+                onPress: () => {
+                  // Don't increment attempts here, let the next attempt handle it
+                },
               },
-              style: "cancel",
-            },
-          ]
-        );
+              {
+                text: "Use Password",
+                onPress: () => {
+                  setShowCamera(false);
+                  setShowPasswordLogin(true);
+                },
+                style: "cancel",
+              },
+            ]);
+          }
+        } else {
+          // Handle unexpected errors
+          console.error("Unexpected error type:", typeof error, error);
+          handleFailedRecognition();
+        }
       } finally {
         setLoading(false);
         setIsCapturing(false);
       }
     }
   };
+
+
+  // const handleFailedRecognition = () => {
+  //   const newFailedAttempts = failedAttempts + 1;
+  //   setFailedAttempts(newFailedAttempts);
+
+  //   if (newFailedAttempts >= 3) {
+  //     setShowCamera(false);
+  //     setShowPasswordLogin(true);
+
+  //     Alert.alert(
+  //       "Face Recognition Failed",
+  //       "Face recognition failed after 3 attempts. Please use your password to login.",
+  //       [{ text: "OK" }]
+  //     );
+  //   } else {
+  //     Alert.alert(
+  //       "Recognition Failed",
+  //       `Face not recognized. ${3 - newFailedAttempts} attempt${
+  //         3 - newFailedAttempts === 1 ? "" : "s"
+  //       } remaining.`,
+  //       [
+  //         {
+  //           text: "Try Again",
+  //           onPress: () => {}, // Stay on camera screen
+  //         },
+  //         {
+  //           text: "Use Password",
+  //           onPress: () => {
+  //             setShowCamera(false);
+  //             setShowPasswordLogin(true);
+  //           },
+  //         },
+  //       ]
+  //     );
+  //   }
+  // };
 
   const handleFailedRecognition = () => {
     const newFailedAttempts = failedAttempts + 1;
@@ -174,7 +265,11 @@ const LoginScreen = ({ navigation }) => {
         [
           {
             text: "Try Again",
-            onPress: () => {}, // Stay on camera screen
+            onPress: () => {
+              // Reset capture state for retry
+              setIsCapturing(false);
+              setLoading(false);
+            },
           },
           {
             text: "Use Password",
@@ -196,12 +291,15 @@ const LoginScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
+      // FIXED: Include faceIdAttempts for password fallback
       const loginResponse = await api.login({
         matricNumber: matricNumber.trim(),
         password: password.trim(),
+        faceIdAttempts: failedAttempts >= 3 ? failedAttempts : 3, // Ensure it's >= 3 for password fallback
       });
 
-      if (loginResponse.success && loginResponse.token) {
+      // FIXED: Handle new response structure
+      if (loginResponse.token) {
         await AsyncStorage.setItem("matricNumber", matricNumber.trim());
         await AsyncStorage.setItem("userToken", loginResponse.token);
 
@@ -214,12 +312,15 @@ const LoginScreen = ({ navigation }) => {
       } else {
         Alert.alert(
           "Login Failed",
-          loginResponse.message ||
-            "Invalid credentials. Please check your matric number and password."
+          "Login failed. Please check your credentials."
         );
       }
     } catch (error) {
-      Alert.alert("Error", error.message || "Login failed. Please try again.");
+      console.error("Password login error:", error);
+
+      // FIXED: Handle structured error response
+      const errorMessage = error.message || "Login failed. Please try again.";
+      Alert.alert("Error", errorMessage);
     } finally {
       setLoading(false);
     }

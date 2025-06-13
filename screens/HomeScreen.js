@@ -389,15 +389,6 @@ export default function HomeScreen({ navigation }) {
                         </Text>
                       </View>
                     </View>
-                    <LinearGradient
-                      colors={getStatusColor(electionData.status)}
-                      style={styles.statusBadge}
-                    >
-                      <Text style={styles.statusText}>
-                        {electionData.status?.charAt(0).toUpperCase() +
-                          electionData.status?.slice(1) || "Active"}
-                      </Text>
-                    </LinearGradient>
                   </View>
 
                   {/* Candidates for this election */}

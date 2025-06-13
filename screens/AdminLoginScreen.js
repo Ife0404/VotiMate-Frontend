@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { adminLogin } from "../services/api";
 
 const AdminLoginScreen = ({ navigation }) => {
   const [matricNumber, setMatricNumber] = useState("");
@@ -28,14 +29,12 @@ const AdminLoginScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      // TODO: Implement admin login API call
       const loginData = {
         matricNumber: matricNumber.trim(),
         password: password.trim(),
       };
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const response = await adminLogin(loginData);
 
       Alert.alert("Success", "Admin login successful!", [
         {

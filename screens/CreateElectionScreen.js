@@ -13,12 +13,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { createElection } from "../services/api"; // Import your API function
 
 const CreateElectionScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    title: "",
-    description: "",
+    name: "", // Changed from 'title' to 'name' to match backend
     startDate: "",
     startTime: "",
     endDate: "",
@@ -30,12 +30,8 @@ const CreateElectionScreen = ({ navigation }) => {
   };
 
   const validateForm = () => {
-    if (!formData.title.trim()) {
-      Alert.alert("Error", "Please enter election title");
-      return false;
-    }
-    if (!formData.description.trim()) {
-      Alert.alert("Error", "Please enter election description");
+    if (!formData.name.trim()) {
+      Alert.alert("Error", "Please enter election name");
       return false;
     }
     if (!formData.startDate.trim()) {
@@ -54,7 +50,50 @@ const CreateElectionScreen = ({ navigation }) => {
       Alert.alert("Error", "Please enter end time");
       return false;
     }
+
+    // Validate date format (YYYY-MM-DD)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(formData.startDate)) {
+      Alert.alert("Error", "Start date must be in YYYY-MM-DD format");
+      return false;
+    }
+    if (!dateRegex.test(formData.endDate)) {
+      Alert.alert("Error", "End date must be in YYYY-MM-DD format");
+      return false;
+    }
+
+    // Validate time format (HH:MM)
+    const timeRegex = /^\d{2}:\d{2}$/;
+    if (!timeRegex.test(formData.startTime)) {
+      Alert.alert("Error", "Start time must be in HH:MM format");
+      return false;
+    }
+    if (!timeRegex.test(formData.endTime)) {
+      Alert.alert("Error", "End time must be in HH:MM format");
+      return false;
+    }
+
+    // Validate that end date/time is after start date/time
+    const startDateTime = new Date(
+      `${formData.startDate}T${formData.startTime}`
+    );
+    const endDateTime = new Date(`${formData.endDate}T${formData.endTime}`);
+
+    if (endDateTime <= startDateTime) {
+      Alert.alert(
+        "Error",
+        "End date and time must be after start date and time"
+      );
+      return false;
+    }
+
     return true;
+  };
+
+  // Helper function to combine date and time into ISO format
+  const combineDateTime = (date, time) => {
+    // Add seconds to make it a complete ISO datetime
+    return `${date}T${time}:00`;
   };
 
   const handleCreateElection = async () => {
@@ -62,17 +101,48 @@ const CreateElectionScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      // TODO: Implement create election API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Send data directly to backend (no mapping needed now)
+      const backendData = {
+        name: formData.name.trim(),
+        startDate: combineDateTime(formData.startDate, formData.startTime),
+        endDate: combineDateTime(formData.endDate, formData.endTime),
+      };
 
-      Alert.alert("Success", "Election created successfully!", [
-        {
-          text: "OK",
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      console.log("Creating election with data:", backendData);
+
+      const result = await createElection(backendData);
+
+      if (result.success) {
+        Alert.alert(
+          "Success",
+          result.message || "Election created successfully!",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                // Reset form
+                setFormData({
+                  name: "",
+                  startDate: "",
+                  startTime: "",
+                  endDate: "",
+                  endTime: "",
+                });
+                navigation.goBack();
+              },
+            },
+          ]
+        );
+      } else {
+        // Handle API error response
+        Alert.alert(
+          "Error",
+          result.message || "Failed to create election. Please try again."
+        );
+      }
     } catch (error) {
-      Alert.alert("Error", "Failed to create election. Please try again.");
+      console.error("Unexpected error creating election:", error);
+      Alert.alert("Error", "An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -122,8 +192,8 @@ const CreateElectionScreen = ({ navigation }) => {
               />
               <TextInput
                 style={styles.input}
-                value={formData.title}
-                onChangeText={(text) => handleInputChange("title", text)}
+                value={formData.name}
+                onChangeText={(text) => handleInputChange("name", text)}
                 placeholder="e.g., Student Union President 2025"
                 placeholderTextColor="#999"
                 editable={!loading}

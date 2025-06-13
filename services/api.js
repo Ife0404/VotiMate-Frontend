@@ -2,69 +2,229 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 
-const BASE_URL = "http://192.168.1.104:8080";
-const FACIAL_URL = "http://192.168.1.104:5000";
+const BASE_URL = "http://172.20.10.2:8080";
+const FACIAL_URL = "http://172.20.10.2:5000";
 
-// Axios instance with token handling
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
 });
 
+// ✅ FIXED: Check for both userToken and adminToken
 api.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem("userToken");
+    // First try to get userToken (for students)
+    let token = await AsyncStorage.getItem("userToken");
+    
+    // If no userToken, try adminToken (for admins)
+    if (!token) {
+      token = await AsyncStorage.getItem("adminToken");
+    }
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log("Token added to request:", token.substring(0, 20) + "...");
+    } else {
+      console.log("No token found in AsyncStorage");
     }
+    
     return config;
   },
   (error) => Promise.reject(error)
 );
 
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => response.data, // response.data is already extracted
   (error) => {
-    console.error("API Error:", error.response?.status, error.message);
-    const errorMessage =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      "Network error";
+    console.error("=== API ERROR DEBUG ===");
+    console.error("Full error object:", error);
+    console.error("Error message:", error.message);
+    console.error("Error code:", error.code);
+    console.error("Error response:", error.response);
+    console.error(
+      "Error request:",
+      error.request ? "Request made but no response" : "No request made"
+    );
+    console.error("=== END DEBUG ===");
+
+    let errorMessage = "An unexpected error occurred";
+    let status = null;
+    let details = {};
+
+    if (error.response) {
+      // Server responded with an error status (4xx, 5xx)
+      console.log(
+        "Server error response:",
+        error.response.status,
+        error.response.data
+      );
+      errorMessage =
+        error.response.data?.message ||
+        `Server error: ${error.response.status}`;
+      status = error.response.status;
+      details = error.response.data || {};
+    } else if (error.request) {
+      // Request was made but no response received (network issues)
+      console.log("Network error - no response received");
+      errorMessage =
+        "Network error: Unable to reach server. Please check your connection and server status.";
+      status = 0; // Network error
+      details = { networkError: true };
+    } else {
+      // Something else happened while setting up the request
+      console.log("Request setup error:", error.message);
+      errorMessage = `Request error: ${error.message}`;
+      details = { setupError: true };
+    }
+
+    // Throw a simplified error object
     throw {
       message: errorMessage,
-      status: error.response?.status,
-      details: error.response?.data,
+      status: status,
+      details: details,
+      originalError: error.message,
     };
   }
 );
 
-//////////////////////////
-// AUTH & USER FUNCTIONS
-//////////////////////////
+// ✅ ALTERNATIVE APPROACH: Create separate API instances
+const createApiInstance = (tokenKey) => {
+  const instance = axios.create({
+    baseURL: BASE_URL,
+    timeout: 10000,
+  });
 
-export const login = async (data) => {
-  const payload = {
-    matricNumber: data.matricNumber,
-    faceIdAttempts: data.faceIdAttempts || 0,
-    faceEmbedding: data.faceEmbedding,
-    password: data.password,
-  };
-  const response = await api.post("/api/student/login", payload);
-  await AsyncStorage.setItem("userToken", response.token);
-  await AsyncStorage.setItem("matricNumber", data.matricNumber);
-  return response;
+  instance.interceptors.request.use(
+    async (config) => {
+      const token = await AsyncStorage.getItem(tokenKey);
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log(`${tokenKey} added to request:`, token.substring(0, 20) + "...");
+      }
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+
+  instance.interceptors.response.use(
+    (response) => response.data,
+    (error) => {
+      console.error("API Error Response:", error.response);
+      let errorMessage = "An unexpected error occurred";
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      throw {
+        message: errorMessage,
+        status: error.response?.status,
+        details: error.response?.data,
+      };
+    }
+  );
+
+  return instance;
 };
 
+// Create separate instances for different user types
+const studentApi = createApiInstance("userToken");
+const adminApi = createApiInstance("adminToken");
+
+// AUTH & USER FUNCTIONS
+export const login = async (data) => {
+  try {
+    // Test server connectivity first
+    console.log("Testing server connectivity...");
+    console.log("BASE_URL:", BASE_URL);
+
+    // Cleaned payload: only send password or faceEmbedding
+    const payload = {
+      matricNumber: data.matricNumber,
+      faceIdAttempts: data.faceIdAttempts || 0,
+    };
+
+    if (data.password) {
+      payload.password = data.password;
+    } else if (data.faceEmbedding) {
+      payload.faceEmbedding = data.faceEmbedding;
+    }
+
+    console.log("API Login - Sending payload:", payload);
+    console.log("API Login - Request URL:", `${BASE_URL}/api/student/login`);
+
+    const response = await api.post("/api/student/login", payload);
+
+    console.log("API Login - Raw response:", response);
+    console.log("API Login - Extracted token:", response.token);
+    console.log("API Login - Auth method:", response.authenticationMethod);
+
+    const token = response.token;
+    if (!token) {
+      throw {
+        message: "Token not found in response",
+        status: 500,
+      };
+    }
+
+    // Store token and matric number in AsyncStorage
+    await AsyncStorage.setItem("userToken", token);
+    await AsyncStorage.setItem("matricNumber", data.matricNumber);
+
+    return {
+      token,
+      authenticationMethod: response.authenticationMethod,
+    };
+  } catch (error) {
+    console.error("API Login - Error caught:", error);
+
+    // Enhanced error handling
+    throw {
+      message: error.message || "An unexpected error occurred during login",
+      attempts: error.details?.attempts || data.faceIdAttempts || 0,
+      status: error.status,
+      networkError: error.details?.networkError || false,
+      setupError: error.details?.setupError || false,
+    };
+  }
+};
+
+
+// export const login = async (data) => {
+//   const payload = {
+//     matricNumber: data.matricNumber,
+//     faceIdAttempts: data.faceIdAttempts || 0,
+//     faceEmbedding: data.faceEmbedding,
+//     password: data.password,
+//   };
+//   const response = await api.post("/api/student/login", payload);
+//   await AsyncStorage.setItem("userToken", response.token);
+//   await AsyncStorage.setItem("matricNumber", data.matricNumber);
+//   return response;
+// };
+
 export const signup = async (userData) => {
-  const payload = {
-    firstName: userData.firstName,
-    lastName: userData.lastName,
-    matricNumber: userData.matricNumber,
-    department: userData.department,
-    password: userData.password,
-    faceEmbedding: userData.faceEmbedding,
-  };
-  return await api.post("/api/student/signup", payload);
+  try {
+    const payload = {
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      matricNumber: userData.matricNumber,
+      department: userData.department,
+      password: userData.password,
+      faceEmbedding: userData.faceEmbedding,
+    };
+    const response = await api.post("/api/student/signup", payload);
+    return {
+      success: true,
+      data: response,
+      message: "Registration successful",
+    };
+  } catch (error) {
+    console.error("Signup error:", error);
+    return {
+      success: false,
+      message: error.message || "Registration failed",
+      details: error.details,
+    };
+  }
 };
 
 export const logout = async () => {
@@ -72,10 +232,155 @@ export const logout = async () => {
   return { success: true, message: "Logged out" };
 };
 
-//////////////////////////
-// VOTING API FUNCTIONS
-//////////////////////////
+// ADMIN FUNCTIONS
+export const adminLogin = async (data) => {
+  try {
+    console.log("Admin Login - Testing server connectivity...");
+    console.log("BASE_URL:", BASE_URL);
 
+    const payload = {
+      matricNumber: data.matricNumber,
+      password: data.password,
+    };
+
+    console.log("Admin Login - Sending payload:", payload);
+    console.log("Admin Login - Request URL:", `${BASE_URL}/api/admin/login`);
+
+    const response = await api.post("/api/admin/login", payload);
+
+    console.log("Admin Login - Raw response:", response);
+
+    await AsyncStorage.setItem("adminToken", response.token);
+    await AsyncStorage.setItem("adminMatricNumber", data.matricNumber);
+
+    return response;
+  } catch (error) {
+    console.error("Admin Login - Error caught:", error);
+    throw error; // Re-throw the enhanced error from interceptor
+  }
+};
+
+export const adminRegister = async (adminData) => {
+  try {
+    const payload = {
+      firstName: adminData.firstName,
+      lastName: adminData.lastName,
+      matricNumber: adminData.matricNumber,
+      department: adminData.department,
+      password: adminData.password,
+    };
+    const response = await api.post("/api/admin/register", payload);
+    return {
+      success: true,
+      data: response,
+      message: "Admin registration successful",
+    };
+  } catch (error) {
+    console.error("Admin register error:", error);
+    return {
+      success: false,
+      message: error.message || "Registration failed",
+      details: error.details,
+    };
+  }
+};
+
+export const getAdminProfile = async () => {
+  try {
+    const adminToken = await AsyncStorage.getItem("adminToken");
+    console.log("Admin token exists:", !!adminToken);
+    console.log("Admin token preview:", adminToken ? adminToken.substring(0, 20) + "..." : "null");
+    
+    if (!adminToken) {
+      throw new Error("No admin token found. Please login again.");
+    }
+    
+    const response = await adminApi.get("/api/admin/profile");
+    console.log("Admin profile response:", response);
+    
+    const adminData = {
+      firstName: response.firstName || "",
+      lastName: response.lastName || "",
+      matricNumber: response.matricNumber || "",
+      department: response.department || "",
+    };
+    
+    await AsyncStorage.setItem("adminData", JSON.stringify(adminData));
+    
+    return {
+      ...adminData,
+      position: "Administrator",
+    };
+  } catch (error) {
+    console.error("Failed to fetch admin profile:", error);
+    
+    // Fallback to cached data
+    const adminMatricNumber = await AsyncStorage.getItem("adminMatricNumber");
+    const adminData = await AsyncStorage.getItem("adminData");
+    
+    if (adminData) {
+      const parsed = JSON.parse(adminData);
+      return {
+        firstName: parsed.firstName || "",
+        lastName: parsed.lastName || "",
+        matricNumber: adminMatricNumber || parsed.matricNumber || "Unknown",
+        department: parsed.department || "Unknown Department",
+        position: "Administrator",
+      };
+    }
+    
+    throw error;
+  }
+};
+
+export const updateAdminProfile = async (data) => {
+  try {
+    const payload = {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      matricNumber: data.matricNumber,
+      department: data.department,
+    };
+    const response = await adminApi.put("/api/admin/profile", payload);
+    await AsyncStorage.setItem("adminData", JSON.stringify(payload));
+    if (data.matricNumber) {
+      await AsyncStorage.setItem("adminMatricNumber", data.matricNumber);
+    }
+    return {
+      success: true,
+      message: response.message || "Admin profile updated successfully",
+      data: response,
+    };
+  } catch (error) {
+    console.error("Failed to update admin profile:", error);
+    throw {
+      message: error.message || "Failed to update admin profile",
+      status: error.status,
+      details: error.details,
+    };
+  }
+};
+
+export const adminLogout = async () => {
+  try {
+    await adminApi.post("/api/admin/logout");
+    await AsyncStorage.multiRemove([
+      "adminToken",
+      "adminMatricNumber",
+      "adminData",
+    ]);
+    return { success: true, message: "Admin logged out successfully" };
+  } catch (error) {
+    await AsyncStorage.multiRemove([
+      "adminToken",
+      "adminMatricNumber",
+      "adminData",
+    ]);
+    return { success: true, message: "Admin logged out" };
+  }
+};
+
+// VOTING API FUNCTIONS
 export const vote = async (candidateId, matricNumber, electionId) => {
   return await api.post("/api/votes", {
     candidateId,
@@ -135,22 +440,17 @@ export const getVotingHistory = async (voterId) => {
   return await api.get(`/api/voting/history/${voterId}?t=${timestamp}`);
 };
 
-// New function to get election with candidates
 export const getElectionWithCandidates = async (electionId) => {
   const timestamp = new Date().getTime();
   return await api.get(`/api/elections/${electionId}/full?t=${timestamp}`);
 };
 
-// New function to get all elections with their candidates
 export const getAllElectionsWithCandidates = async () => {
   const timestamp = new Date().getTime();
   return await api.get(`/api/elections/full?t=${timestamp}`);
 };
 
-//////////////////////////
 // FACE EMBEDDING
-//////////////////////////
-
 export const generateEmbedding = async (imageUri) => {
   const base64Data = await FileSystem.readAsStringAsync(imageUri, {
     encoding: FileSystem.EncodingType.Base64,
@@ -169,10 +469,7 @@ export const generateEmbedding = async (imageUri) => {
   return response.data;
 };
 
-//////////////////////////
 // CHATBOT
-//////////////////////////
-
 export const getChatbotResponse = async (message) => {
   const matricNumber = await AsyncStorage.getItem("matricNumber");
   if (!matricNumber) throw new Error("User not logged in");
@@ -186,15 +483,10 @@ export const getChatbotResponse = async (message) => {
   );
 };
 
-//////////////////////////
 // PROFILE
-//////////////////////////
-
 export const getProfile = async () => {
   try {
     const response = await api.get("/api/student/profile");
-
-    // Store the updated user data in AsyncStorage for offline access
     const userData = {
       firstName: response.firstName,
       lastName: response.lastName,
@@ -202,21 +494,17 @@ export const getProfile = async () => {
       department: response.department,
     };
     await AsyncStorage.setItem("userData", JSON.stringify(userData));
-
     return {
       firstName: response.firstName,
       lastName: response.lastName,
       matricNumber: response.matricNumber,
       department: response.department,
-      position: "Voter", // Static for now
+      position: "Voter",
     };
   } catch (error) {
     console.error("Failed to fetch profile from backend:", error);
-
-    // Fallback to AsyncStorage if backend fails
     const matricNumber = await AsyncStorage.getItem("matricNumber");
     const userData = await AsyncStorage.getItem("userData");
-
     if (userData) {
       const parsed = JSON.parse(userData);
       return {
@@ -227,7 +515,6 @@ export const getProfile = async () => {
         position: "Voter",
       };
     }
-
     return {
       firstName: "Student",
       lastName: "",
@@ -272,15 +559,266 @@ export const updateProfile = async (data) => {
   }
 };
 
-// Add a logout API call (optional - since JWT is stateless)
 export const logoutFromServer = async () => {
   try {
     await api.post("/api/student/logout");
     await AsyncStorage.multiRemove(["userToken", "matricNumber", "userData"]);
     return { success: true, message: "Logged out successfully" };
   } catch (error) {
-    // Even if server logout fails, clear local storage
     await AsyncStorage.multiRemove(["userToken", "matricNumber", "userData"]);
     return { success: true, message: "Logged out" };
+  }
+};
+
+// CANDIDATE FUNCTIONS
+export const getActiveElections = async () => {
+  try {
+    const timestamp = new Date().getTime();
+    const response = await api.get(`/api/elections?t=${timestamp}`);
+    return response.filter((election) => election.status === "ACTIVE");
+  } catch (error) {
+    console.error("Error fetching active elections:", error);
+    throw {
+      message: error.message || "Failed to fetch active elections",
+      status: error.status,
+      details: error.details,
+    };
+  }
+};
+
+export const getElectionPositions = async (electionId) => {
+  try {
+    const timestamp = new Date().getTime();
+    const response = await api.get(
+      `/api/elections/${electionId}?t=${timestamp}`
+    );
+    return response.positions || [];
+  } catch (error) {
+    console.error("Error fetching election positions:", error);
+    throw {
+      message: error.message || "Failed to fetch election positions",
+      status: error.status,
+      details: error.details,
+    };
+  }
+};
+
+export const createCandidate = async (candidateData) => {
+  try {
+    const formData = new FormData();
+
+    // Create the candidate object matching your Spring Boot DTO
+    const candidatePayload = {
+      name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
+      manifesto: candidateData.manifesto,
+      position: candidateData.position,
+      level: parseInt(candidateData.level),
+      electionName: candidateData.electionName,
+    };
+
+    // Append the candidate data as a JSON blob with proper content type
+    formData.append("candidate", {
+      string: JSON.stringify(candidatePayload),
+      type: "application/json",
+    });
+
+    // Add image if provided (React Native format)
+    if (candidateData.profileImage && candidateData.profileImage.uri) {
+      formData.append("image", {
+        uri: candidateData.profileImage.uri,
+        type: candidateData.profileImage.type || "image/jpeg",
+        name: candidateData.profileImage.fileName || "profile.jpg",
+      });
+    }
+
+    // Don't set Content-Type header - let the browser/RN set it automatically
+    // This ensures proper boundary is set for multipart/form-data
+    const response = await api.post("/api/candidates", formData);
+
+    return response;
+  } catch (error) {
+    console.error("Error creating candidate:", error);
+    throw {
+      message:
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to create candidate",
+      status: error.response?.status,
+      details: error.response?.data,
+    };
+  }
+};
+
+// Additional helper function to get candidates by election name
+export const getCandidatesByElectionName = async (electionName) => {
+  try {
+    const response = await api.get(
+      `/api/candidates/election/name/${electionName}`
+    );
+    return response;
+  } catch (error) {
+    console.error("Error fetching candidates by election name:", error);
+    throw error;
+  }
+};
+
+export const updateCandidate = async (candidateId, candidateData) => {
+  try {
+    const formData = new FormData();
+
+    // Create the candidate object matching your Spring Boot DTO
+    const candidatePayload = {
+      name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
+      campaignPromises: candidateData.campaignPromises, // Now correctly mapped
+      position: candidateData.position,
+      level: parseInt(candidateData.level),
+    };
+
+    formData.append("candidate", JSON.stringify(candidatePayload));
+
+    // Add image if provided
+    if (candidateData.profileImage && candidateData.profileImage.uri) {
+      formData.append("image", {
+        uri: candidateData.profileImage.uri,
+        type: "image/jpeg",
+        name: "profile.jpg",
+      });
+    }
+
+    const response = await api.put(
+      `/api/candidates/${candidateId}/election/${candidateData.electionId}`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error("Error updating candidate:", error);
+    throw {
+      message: error.message || "Failed to update candidate",
+      status: error.status,
+      details: error.details,
+    };
+  }
+};
+
+// ELECTION MANAGEMENT FUNCTIONS
+export const createElection = async (electionData) => {
+  try {
+    // The payload is already in the correct format from the frontend
+    const payload = {
+      name: electionData.name,
+      startDate: electionData.startDate, // Combined date-time (e.g., "2025-06-17T09:00:00")
+      endDate: electionData.endDate, // Combined date-time (e.g., "2025-06-18T17:00:00")
+    };
+
+    console.log("Creating election with payload:", payload);
+
+    const response = await api.post("/api/elections", payload);
+
+    return {
+      success: true,
+      data: response.data, // Access the actual response data
+      message: "Election created successfully",
+    };
+  } catch (error) {
+    console.error("Error creating election:", error);
+
+    // Better error handling for axios errors
+    if (error.response) {
+      // Server responded with error status
+      return {
+        success: false,
+        message: error.response.data?.message || "Failed to create election",
+        details: error.response.data?.details || {},
+        status: error.response.status,
+      };
+    } else if (error.request) {
+      // Network error
+      return {
+        success: false,
+        message: "Network error. Please check your connection.",
+        details: {},
+        status: null,
+      };
+    } else {
+      // Other error
+      return {
+        success: false,
+        message: error.message || "An unexpected error occurred",
+        details: {},
+        status: null,
+      };
+    }
+  }
+};
+
+export const updateElection = async (electionId, electionData) => {
+  try {
+    const payload = {
+      name: electionData.title,
+      startDate: electionData.startDate,
+      endDate: electionData.endDate,
+    };
+
+    const response = await api.put(`/api/elections/${electionId}`, payload);
+    
+    return {
+      success: true,
+      data: response,
+      message: "Election updated successfully"
+    };
+  } catch (error) {
+    console.error("Error updating election:", error);
+    return {
+      success: false,
+      message: error.message || "Failed to update election",
+      details: error.details,
+      status: error.status
+    };
+  }
+};
+
+export const deleteElection = async (electionId) => {
+  try {
+    const response = await api.delete(`/api/elections/${electionId}`);
+    
+    return {
+      success: true,
+      data: response,
+      message: "Election deleted successfully"
+    };
+  } catch (error) {
+    console.error("Error deleting election:", error);
+    return {
+      success: false,
+      message: error.message || "Failed to delete election",
+      details: error.details,
+      status: error.status
+    };
+  }
+};
+
+export const getElectionById = async (electionId) => {
+  try {
+    const timestamp = new Date().getTime();
+    const response = await api.get(`/api/elections/${electionId}?t=${timestamp}`);
+    
+    return {
+      success: true,
+      data: response,
+      message: "Election fetched successfully"
+    };
+  } catch (error) {
+    console.error("Error fetching election:", error);
+    return {
+      success: false,
+      message: error.message || "Failed to fetch election",
+      details: error.details,
+      status: error.status
+    };
   }
 };
