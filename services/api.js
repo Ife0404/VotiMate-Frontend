@@ -822,3 +822,56 @@ export const getElectionById = async (electionId) => {
     };
   }
 };
+
+// Add these functions to your api.js file
+
+// Get registered voters count
+export const getRegisteredVotersCount = async () => {
+  try {
+    const timestamp = new Date().getTime();
+    const response = await api.get(`/api/students/count?t=${timestamp}`);
+    return response;
+  } catch (error) {
+    console.error("Error fetching registered voters count:", error);
+    throw error;
+  }
+};
+
+// Get all students (if you need the full list)
+export const getAllStudents = async () => {
+  try {
+    const timestamp = new Date().getTime();
+    const response = await api.get(`/api/students?t=${timestamp}`);
+    return response;
+  } catch (error) {
+    console.error("Error fetching students:", error);
+    throw error;
+  }
+};
+
+// Get detailed statistics (if your backend supports it)
+export const getAdminStatistics = async () => {
+  try {
+    const timestamp = new Date().getTime();
+    const response = await api.get(`/api/admin/statistics?t=${timestamp}`);
+    return response;
+  } catch (error) {
+    console.error("Error fetching admin statistics:", error);
+    throw error;
+  }
+};
+
+// Get election statistics
+export const getElectionStatistics = async (electionId = null) => {
+  try {
+    const timestamp = new Date().getTime();
+    const url = electionId 
+      ? `/api/elections/${electionId}/statistics?t=${timestamp}`
+      : `/api/elections/statistics?t=${timestamp}`;
+    const response = await api.get(url);
+    return response;
+  } catch (error) {
+    console.error("Error fetching election statistics:", error);
+    throw error;
+  }
+};
