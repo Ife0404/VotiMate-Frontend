@@ -8,6 +8,7 @@ import {
   StatusBar,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -30,7 +31,7 @@ const AdminMainScreen = ({ navigation }) => {
       loading: true,
     },
     {
-      title: "Registered Voters",
+      title: "Total Elections",
       count: "0",
       icon: "person-circle",
       color: ["#4ECDC4", "#44A08D"],
@@ -55,23 +56,96 @@ const AdminMainScreen = ({ navigation }) => {
     fetchStats();
   }, []);
 
+  // Add a focus listener to refresh data when screen comes into focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      fetchStats();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   const fetchStats = async () => {
+    console.log("🔄 Fetching admin stats...");
+
+    // Reset loading states
+    setStats((prevStats) =>
+      prevStats.map((stat) => ({ ...stat, loading: true }))
+    );
+
     try {
-      // Fetch elections and count active ones
-      const elections = await getElections();
-      const activeElections = elections.filter(
-        (election) => election.status === "ACTIVE"
-      ).length;
+      // Fetch elections
+      console.log("📊 Fetching elections...");
+      const electionsResponse = await getElections();
+      console.log("Elections response:", electionsResponse);
 
-      // Fetch all candidates
-      const candidates = await getCandidates();
+      let elections = [];
+      let activeElections = 0;
+
+      // Handle different response structures
+      if (Array.isArray(electionsResponse)) {
+        elections = electionsResponse;
+      } else if (
+        electionsResponse.data &&
+        Array.isArray(electionsResponse.data)
+      ) {
+        elections = electionsResponse.data;
+      } else if (
+        electionsResponse.elections &&
+        Array.isArray(electionsResponse.elections)
+      ) {
+        elections = electionsResponse.elections;
+      } else {
+        console.warn(
+          "Unexpected elections response structure:",
+          electionsResponse
+        );
+        elections = [];
+      }
+
+      // Count active elections
+      activeElections = elections.filter((election) => {
+        // Handle different possible status values
+        const status = election.status?.toLowerCase();
+        return status === "active" || status === "ongoing" || status === "open";
+      }).length;
+
+      console.log(
+        `📈 Found ${elections.length} total elections, ${activeElections} active`
+      );
+
+      // Fetch candidates
+      console.log("👥 Fetching candidates...");
+      const candidatesResponse = await getCandidates();
+      console.log("Candidates response:", candidatesResponse);
+
+      let candidates = [];
+
+      // Handle different response structures
+      if (Array.isArray(candidatesResponse)) {
+        candidates = candidatesResponse;
+      } else if (
+        candidatesResponse.data &&
+        Array.isArray(candidatesResponse.data)
+      ) {
+        candidates = candidatesResponse.data;
+      } else if (
+        candidatesResponse.candidates &&
+        Array.isArray(candidatesResponse.candidates)
+      ) {
+        candidates = candidatesResponse.candidates;
+      } else {
+        console.warn(
+          "Unexpected candidates response structure:",
+          candidatesResponse
+        );
+        candidates = [];
+      }
+
       const totalCandidates = candidates.length;
+      console.log(`👤 Found ${totalCandidates} total candidates`);
 
-      // Note: Since there's no specific endpoint for registered voters count,
-      // you might need to add one to your backend or use a placeholder
-      // For now, I'll leave it as a placeholder that you can update
-      const registeredVoters = "N/A"; // Replace with actual API call when available
-
+      // Update stats with fetched data
       setStats((prevStats) => [
         {
           ...prevStats[0],
@@ -85,21 +159,37 @@ const AdminMainScreen = ({ navigation }) => {
         },
         {
           ...prevStats[2],
-          count: registeredVoters,
+          title: "Total Elections", // Changed from "Registered Voters"
+          count: elections.length.toString(),
           loading: false,
         },
       ]);
+
+      console.log("✅ Stats updated successfully");
     } catch (error) {
-      console.error("Error fetching stats:", error);
-      // Keep loading state or show error state
+      console.error("❌ Error fetching stats:", error);
+
+      // Show user-friendly error message
+      const errorMessage = error.message || "Failed to load statistics";
+      Alert.alert(
+        "Error Loading Data",
+        `${errorMessage}\n\nPlease check your connection and try again.`,
+        [{ text: "Retry", onPress: fetchStats }, { text: "OK" }]
+      );
+
+      // Update stats to show error state
       setStats((prevStats) =>
         prevStats.map((stat) => ({
           ...stat,
           loading: false,
-          count: "Error",
+          count: "--",
         }))
       );
     }
+  };
+
+  const handleRefresh = () => {
+    fetchStats();
   };
 
   return (
@@ -111,17 +201,26 @@ const AdminMainScreen = ({ navigation }) => {
           <Text style={styles.greeting}>Good day</Text>
           <Text style={styles.adminName}>Admin Panel</Text>
         </View>
-        <TouchableOpacity
-          style={styles.profileButton}
-          onPress={() => navigation.navigate("AdminProfile")}
-        >
-          <LinearGradient
-            colors={["#FF6B6B", "#FF5252"]}
-            style={styles.profileGradient}
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+            activeOpacity={0.7}
           >
-            <Ionicons name="person" size={24} color="#fff" />
-          </LinearGradient>
-        </TouchableOpacity>
+            <Ionicons name="refresh" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => navigation.navigate("AdminProfile")}
+          >
+            <LinearGradient
+              colors={["#FF6B6B", "#FF5252"]}
+              style={styles.profileGradient}
+            >
+              <Ionicons name="person" size={24} color="#fff" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -238,6 +337,19 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     marginTop: 4,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   profileButton: {
     borderRadius: 25,

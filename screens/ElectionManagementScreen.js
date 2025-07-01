@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,57 +9,182 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  getElections,
+  deleteElection,
+  updateElection,
+  getResultsByElection,
+} from "../services/api";
 
 const ElectionManagementScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
-
-  // Sample elections data - replace with actual data from your backend
-  const [elections, setElections] = useState([
-    {
-      id: 1,
-      title: "Student Union President 2025",
-      campaignPromises:
-        "Comprehensive election for the next student union president with focus on campus improvements",
-      startDate: "2025-06-15",
-      endDate: "2025-06-16",
-      status: "upcoming",
-      candidatesCount: 5,
-      votersCount: 847,
-    },
-    {
-      id: 2,
-      title: "Faculty Representative Election",
-      campaignPromises:
-        "Selecting faculty representative for academic committee with emphasis on curriculum enhancement",
-      startDate: "2025-06-10",
-      endDate: "2025-06-11",
-      status: "active",
-      candidatesCount: 3,
-      votersCount: 234,
-    },
-    {
-      id: 3,
-      title: "Sports Director Election",
-      campaignPromises:
-        "Choosing new sports director to oversee athletic programs and facility management",
-      startDate: "2025-05-20",
-      endDate: "2025-05-21",
-      status: "completed",
-      candidatesCount: 4,
-      votersCount: 567,
-    },
-  ]);
+  const [elections, setElections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
   const filterOptions = [
     { key: "all", label: "All" },
-    { key: "active", label: "Active" },
-    { key: "upcoming", label: "Upcoming" },
-    { key: "completed", label: "Completed" },
+    { key: "ACTIVE", label: "Active" },
+    { key: "UPCOMING", label: "Upcoming" },
+    { key: "COMPLETED", label: "Completed" },
   ];
+
+  // Map backend status to display status
+  const mapElectionStatus = (election) => {
+    const now = new Date();
+    const startDate = new Date(election.startDate);
+    const endDate = new Date(election.endDate);
+
+    if (now < startDate) {
+      return "upcoming";
+    } else if (now >= startDate && now <= endDate) {
+      return "active";
+    } else {
+      return "completed";
+    }
+  };
+
+  // Get vote count for an election
+  const getVoteCountForElection = async (electionId) => {
+    try {
+      const results = await getResultsByElection(electionId);
+      // Sum up all votes from all candidates in this election
+      if (results && Array.isArray(results)) {
+        return results.reduce(
+          (total, candidate) => total + (candidate.voteCount || 0),
+          0
+        );
+      }
+      return 0;
+    } catch (error) {
+      console.log(`No results found for election ${electionId}:`, error);
+      return 0;
+    }
+  };
+
+  // Transform backend data to match UI expectations
+  const transformElectionData = async (backendElections) => {
+    const transformedElections = await Promise.all(
+      backendElections.map(async (election) => {
+        const voteCount = await getVoteCountForElection(election.id);
+
+        return {
+          id: election.id,
+          title: election.name,
+          startDate: election.startDate?.split("T")[0] || election.startDate,
+          endDate: election.endDate?.split("T")[0] || election.endDate,
+          status: mapElectionStatus(election),
+          candidatesCount: election.candidates?.length || 0,
+          votersCount: voteCount, // Actual vote count instead of total registered voters
+          backendStatus: election.status,
+          originalData: election,
+        };
+      })
+    );
+
+    return transformedElections;
+  };
+
+  // Fetch elections from backend
+  const fetchElections = async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setError(null);
+
+      const response = await getElections();
+      console.log("Fetched elections:", response);
+
+      // Handle both array response and object with data property
+      const electionsArray = Array.isArray(response)
+        ? response
+        : response.data || [];
+      const transformedElections = await transformElectionData(electionsArray);
+
+      setElections(transformedElections);
+    } catch (error) {
+      console.error("Error fetching elections:", error);
+      setError(error.message || "Failed to fetch elections");
+
+      // Show user-friendly error
+      Alert.alert(
+        "Connection Error",
+        "Unable to fetch elections. Please check your connection and try again.",
+        [
+          { text: "Retry", onPress: () => fetchElections() },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Handle pull to refresh
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchElections(false);
+  };
+
+  // Load elections on component mount
+  useEffect(() => {
+    fetchElections();
+  }, []);
+
+  // Handle election deletion
+  const handleDeleteElection = (election) => {
+    Alert.alert(
+      "Delete Election",
+      `Are you sure you want to delete "${election.title}"? This action cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const result = await deleteElection(election.id);
+
+              if (result.success) {
+                // Remove from local state
+                setElections(elections.filter((e) => e.id !== election.id));
+                Alert.alert("Success", "Election deleted successfully");
+              } else {
+                Alert.alert(
+                  "Error",
+                  result.message || "Failed to delete election"
+                );
+              }
+            } catch (error) {
+              console.error("Delete election error:", error);
+              Alert.alert(
+                "Error",
+                error.message || "Failed to delete election"
+              );
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Handle view results navigation
+  const handleViewResults = (election) => {
+    navigation.navigate("ChartView", {
+      electionId: election.id,
+      electionName: election.title,
+    });
+  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -87,34 +212,43 @@ const ElectionManagementScreen = ({ navigation }) => {
     }
   };
 
-  const handleDeleteElection = (election) => {
-    Alert.alert(
-      "Delete Election",
-      `Are you sure you want to delete "${election.title}"? This action cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            setElections(elections.filter((e) => e.id !== election.id));
-            Alert.alert("Success", "Election deleted successfully");
-          },
-        },
-      ]
-    );
-  };
-
+  // Filter elections based on search and filter selection
   const filteredElections = elections.filter((election) => {
-    const matchesSearch =
-      election.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      election.campaignPromises
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase());
+    const matchesSearch = election.title
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+
     const matchesFilter =
-      selectedFilter === "all" || election.status === selectedFilter;
+      selectedFilter === "all" ||
+      (selectedFilter === "ACTIVE" && election.status === "active") ||
+      (selectedFilter === "UPCOMING" && election.status === "upcoming") ||
+      (selectedFilter === "COMPLETED" && election.status === "completed");
+
     return matchesSearch && matchesFilter;
   });
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString();
+    } catch {
+      return dateString;
+    }
+  };
+
+  if (loading && elections.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#14104D" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6C4EF2" />
+          <Text style={styles.loadingText}>Loading elections...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -144,7 +278,9 @@ const ElectionManagementScreen = ({ navigation }) => {
 
       <View style={styles.titleContainer}>
         <Text style={styles.screenTitle}>Election Management</Text>
-        <Text style={styles.screenSubtitle}>Manage all elections</Text>
+        <Text style={styles.screenSubtitle}>
+          Manage all elections ({elections.length})
+        </Text>
       </View>
 
       <View style={styles.searchContainer}>
@@ -189,7 +325,25 @@ const ElectionManagementScreen = ({ navigation }) => {
         </ScrollView>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#6C4EF2"
+            colors={["#6C4EF2"]}
+          />
+        }
+      >
+        {loading && elections.length > 0 && (
+          <View style={styles.refreshingIndicator}>
+            <ActivityIndicator size="small" color="#6C4EF2" />
+            <Text style={styles.refreshingText}>Updating...</Text>
+          </View>
+        )}
+
         {filteredElections.map((election) => (
           <View key={election.id} style={styles.electionCard}>
             <View style={styles.electionHeader}>
@@ -213,16 +367,14 @@ const ElectionManagementScreen = ({ navigation }) => {
                   </LinearGradient>
                 </View>
               </View>
-              <Text style={styles.electionCampaignPromises}>
-                {election.campaignPromises}
-              </Text>
             </View>
 
             <View style={styles.electionDetails}>
               <View style={styles.detailRow}>
                 <Ionicons name="calendar" size={16} color="#666" />
                 <Text style={styles.detailText}>
-                  {election.startDate} - {election.endDate}
+                  {formatDate(election.startDate)} -{" "}
+                  {formatDate(election.endDate)}
                 </Text>
               </View>
               <View style={styles.statsRow}>
@@ -233,9 +385,9 @@ const ElectionManagementScreen = ({ navigation }) => {
                   </Text>
                 </View>
                 <View style={styles.statItem}>
-                  <Ionicons name="person" size={16} color="#FF6B6B" />
+                  <Ionicons name="checkmark-circle" size={16} color="#4ECDC4" />
                   <Text style={styles.statText}>
-                    {election.votersCount} Voters
+                    {election.votersCount} Votes Cast
                   </Text>
                 </View>
               </View>
@@ -245,7 +397,10 @@ const ElectionManagementScreen = ({ navigation }) => {
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() =>
-                  navigation.navigate("EditElection", { election })
+                  navigation.navigate("EditElection", {
+                    election: election.originalData,
+                    onUpdate: fetchElections,
+                  })
                 }
               >
                 <Ionicons name="create" size={20} color="#4ECDC4" />
@@ -253,8 +408,19 @@ const ElectionManagementScreen = ({ navigation }) => {
               </TouchableOpacity>
 
               <TouchableOpacity
+                style={[styles.actionButton, styles.viewButton]}
+                onPress={() => handleViewResults(election)}
+              >
+                <Ionicons name="bar-chart" size={20} color="#FFD93D" />
+                <Text style={[styles.actionButtonText, styles.viewButtonText]}>
+                  View
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={[styles.actionButton, styles.deleteButton]}
                 onPress={() => handleDeleteElection(election)}
+                disabled={loading}
               >
                 <Ionicons name="trash" size={20} color="#FF6B6B" />
                 <Text
@@ -267,15 +433,31 @@ const ElectionManagementScreen = ({ navigation }) => {
           </View>
         ))}
 
-        {filteredElections.length === 0 && (
+        {filteredElections.length === 0 && !loading && (
           <View style={styles.emptyContainer}>
-            <Ionicons name="ballot" size={64} color="#666" />
-            <Text style={styles.emptyTitle}>No Elections Found</Text>
+            <Ionicons
+              name={error ? "cloud-offline" : "ballot"}
+              size={64}
+              color="#666"
+            />
+            <Text style={styles.emptyTitle}>
+              {error ? "Connection Error" : "No Elections Found"}
+            </Text>
             <Text style={styles.emptySubtitle}>
-              {searchQuery
+              {error
+                ? "Unable to load elections. Pull down to retry."
+                : searchQuery
                 ? "Try adjusting your search"
                 : "Create your first election"}
             </Text>
+            {error && (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => fetchElections()}
+              >
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </ScrollView>
@@ -287,6 +469,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#14104D",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    color: "#fff",
+    marginTop: 12,
+    fontSize: 16,
+  },
+  refreshingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  refreshingText: {
+    color: "#6C4EF2",
+    marginLeft: 8,
+    fontSize: 14,
   },
   header: {
     flexDirection: "row",
@@ -418,11 +622,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-  electionCampaignPromises: {
-    color: "#B8B8B8",
-    fontSize: 14,
-    lineHeight: 20,
-  },
   electionDetails: {
     marginBottom: 16,
   },
@@ -465,7 +664,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderRadius: 8,
     flex: 1,
-    marginHorizontal: 4,
+    marginHorizontal: 2,
     justifyContent: "center",
   },
   actionButtonText: {
@@ -473,6 +672,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 6,
     fontWeight: "500",
+  },
+  viewButton: {
+    backgroundColor: "rgba(255, 217, 61, 0.1)",
+  },
+  viewButtonText: {
+    color: "#FFD93D",
   },
   deleteButton: {
     backgroundColor: "rgba(255, 107, 107, 0.1)",
@@ -496,6 +701,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 8,
     textAlign: "center",
+  },
+  retryButton: {
+    backgroundColor: "#6C4EF2",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
 
