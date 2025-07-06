@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { createElection } from "../services/api"; // Import your API function
+import { createElection } from "../services/api";
 
 const CreateElectionScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);

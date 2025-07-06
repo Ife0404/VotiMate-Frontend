@@ -13,11 +13,19 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  getElectionById,
+  updateElection,
+  deleteElection,
+  getCandidates,
+} from "../services/api";
 
 const EditElectionScreen = ({ navigation, route }) => {
-  const { election } = route.params;
+  const { electionId } = route.params;
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [election, setElection] = useState(null);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -26,19 +34,112 @@ const EditElectionScreen = ({ navigation, route }) => {
     endDate: "",
     endTime: "",
   });
+  const [electionStats, setElectionStats] = useState({
+    candidatesCount: 0,
+    status: "unknown",
+  });
 
-  useEffect(() => {
-    if (election) {
-      setFormData({
-        title: election.title || "",
-        description: election.description || "",
-        startDate: election.startDate || "",
-        startTime: election.startTime || "09:00",
-        endDate: election.endDate || "",
-        endTime: election.endTime || "17:00",
-      });
+  // Helper function to format date-time from backend
+  const formatDateTime = (dateTimeString) => {
+    if (!dateTimeString) return { date: "", time: "" };
+
+    try {
+      const date = new Date(dateTimeString);
+      const dateStr = date.toISOString().split("T")[0]; // YYYY-MM-DD
+      const timeStr = date.toTimeString().split(" ")[0].substring(0, 5); // HH:MM
+      return { date: dateStr, time: timeStr };
+    } catch (error) {
+      console.error("Error parsing date-time:", error);
+      return { date: "", time: "" };
     }
-  }, [election]);
+  };
+
+  // Helper function to combine date and time for backend
+  const combineDateTime = (date, time) => {
+    if (!date || !time) return null;
+    return `${date}T${time}:00`;
+  };
+
+  // Helper function to determine election status
+  const getElectionStatus = (startDate, endDate) => {
+    const now = new Date();
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (now < start) return "upcoming";
+    if (now > end) return "completed";
+    return "active";
+  };
+
+  // Fetch election data and statistics
+  useEffect(() => {
+    const fetchElectionData = async () => {
+      try {
+        setInitialLoading(true);
+
+        // Fetch election details
+        const electionResponse = await getElectionById(electionId);
+        if (electionResponse.success) {
+          const electionData = electionResponse.data;
+          setElection(electionData);
+
+          // Format start and end dates
+          const startDateTime = formatDateTime(electionData.startDate);
+          const endDateTime = formatDateTime(electionData.endDate);
+
+          setFormData({
+            title: electionData.name || "",
+            description: electionData.description || "",
+            startDate: startDateTime.date,
+            startTime: startDateTime.time || "09:00",
+            endDate: endDateTime.date,
+            endTime: endDateTime.time || "17:00",
+          });
+
+          // Determine election status
+          const status = getElectionStatus(
+            electionData.startDate,
+            electionData.endDate
+          );
+
+          // Fetch candidates count
+          try {
+            const candidatesResponse = await getCandidates(electionId);
+            const candidatesCount = Array.isArray(candidatesResponse)
+              ? candidatesResponse.length
+              : 0;
+
+            setElectionStats({
+              candidatesCount,
+              status,
+            });
+          } catch (candidatesError) {
+            console.warn("Could not fetch candidates:", candidatesError);
+            setElectionStats((prev) => ({ ...prev, status }));
+          }
+        } else {
+          Alert.alert(
+            "Error",
+            electionResponse.message || "Failed to fetch election data"
+          );
+          navigation.goBack();
+        }
+      } catch (error) {
+        console.error("Error fetching election data:", error);
+        Alert.alert("Error", "Failed to load election data. Please try again.");
+        navigation.goBack();
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    if (electionId) {
+      fetchElectionData();
+    } else {
+      Alert.alert("Error", "No election ID provided");
+      navigation.goBack();
+    }
+  }, [electionId]);
 
   const handleInputChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
@@ -47,10 +148,6 @@ const EditElectionScreen = ({ navigation, route }) => {
   const validateForm = () => {
     if (!formData.title.trim()) {
       Alert.alert("Error", "Please enter election title");
-      return false;
-    }
-    if (!formData.description.trim()) {
-      Alert.alert("Error", "Please enter election description");
       return false;
     }
     if (!formData.startDate.trim()) {
@@ -69,6 +166,42 @@ const EditElectionScreen = ({ navigation, route }) => {
       Alert.alert("Error", "Please enter end time");
       return false;
     }
+
+    // Validate date format (basic check)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(formData.startDate)) {
+      Alert.alert("Error", "Start date must be in YYYY-MM-DD format");
+      return false;
+    }
+    if (!dateRegex.test(formData.endDate)) {
+      Alert.alert("Error", "End date must be in YYYY-MM-DD format");
+      return false;
+    }
+
+    // Validate time format (basic check)
+    const timeRegex = /^\d{2}:\d{2}$/;
+    if (!timeRegex.test(formData.startTime)) {
+      Alert.alert("Error", "Start time must be in HH:MM format");
+      return false;
+    }
+    if (!timeRegex.test(formData.endTime)) {
+      Alert.alert("Error", "End time must be in HH:MM format");
+      return false;
+    }
+
+    // Validate that end date/time is after start date/time
+    const startDateTime = new Date(
+      combineDateTime(formData.startDate, formData.startTime)
+    );
+    const endDateTime = new Date(
+      combineDateTime(formData.endDate, formData.endTime)
+    );
+
+    if (endDateTime <= startDateTime) {
+      Alert.alert("Error", "End date/time must be after start date/time");
+      return false;
+    }
+
     return true;
   };
 
@@ -77,17 +210,35 @@ const EditElectionScreen = ({ navigation, route }) => {
 
     setLoading(true);
     try {
-      // TODO: Implement update election API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const updateData = {
+        title: formData.title.trim(),
+        startDate: combineDateTime(formData.startDate, formData.startTime),
+        endDate: combineDateTime(formData.endDate, formData.endTime),
+      };
 
-      Alert.alert("Success", "Election updated successfully!", [
-        {
-          text: "OK",
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      console.log("Updating election with data:", updateData);
+
+      const response = await updateElection(electionId, updateData);
+
+      if (response.success) {
+        Alert.alert("Success", "Election updated successfully!", [
+          {
+            text: "OK",
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      } else {
+        Alert.alert(
+          "Error",
+          response.message || "Failed to update election. Please try again."
+        );
+      }
     } catch (error) {
-      Alert.alert("Error", "Failed to update election. Please try again.");
+      console.error("Error updating election:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to update election. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -96,7 +247,7 @@ const EditElectionScreen = ({ navigation, route }) => {
   const handleDeleteElection = () => {
     Alert.alert(
       "Delete Election",
-      `Are you sure you want to delete "${election.title}"? This action cannot be undone and will remove all associated candidates and votes.`,
+      `Are you sure you want to delete "${formData.title}"? This action cannot be undone and will remove all associated candidates and votes.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -111,17 +262,27 @@ const EditElectionScreen = ({ navigation, route }) => {
   const confirmDelete = async () => {
     setDeleteLoading(true);
     try {
-      // TODO: Implement delete election API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const response = await deleteElection(electionId);
 
-      Alert.alert("Success", "Election deleted successfully!", [
-        {
-          text: "OK",
-          onPress: () => navigation.navigate("ElectionManagement"),
-        },
-      ]);
+      if (response.success) {
+        Alert.alert("Success", "Election deleted successfully!", [
+          {
+            text: "OK",
+            onPress: () => navigation.navigate("ElectionManagement"),
+          },
+        ]);
+      } else {
+        Alert.alert(
+          "Error",
+          response.message || "Failed to delete election. Please try again."
+        );
+      }
     } catch (error) {
-      Alert.alert("Error", "Failed to delete election. Please try again.");
+      console.error("Error deleting election:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to delete election. Please try again."
+      );
     } finally {
       setDeleteLoading(false);
     }
@@ -141,6 +302,19 @@ const EditElectionScreen = ({ navigation, route }) => {
       ]
     );
   };
+
+  // Show loading screen while fetching initial data
+  if (initialLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#14104D" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+          <Text style={styles.loadingText}>Loading election data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -294,21 +468,15 @@ const EditElectionScreen = ({ navigation, route }) => {
                 <Text style={styles.statusLabel}>Current Status:</Text>
                 <View style={styles.statusBadge}>
                   <Text style={styles.statusText}>
-                    {election?.status?.charAt(0).toUpperCase() +
-                      election?.status?.slice(1)}
+                    {electionStats.status.charAt(0).toUpperCase() +
+                      electionStats.status.slice(1)}
                   </Text>
                 </View>
               </View>
               <View style={styles.statusItem}>
                 <Text style={styles.statusLabel}>Candidates:</Text>
                 <Text style={styles.statusValue}>
-                  {election?.candidatesCount || 0}
-                </Text>
-              </View>
-              <View style={styles.statusItem}>
-                <Text style={styles.statusLabel}>Registered Voters:</Text>
-                <Text style={styles.statusValue}>
-                  {election?.votersCount || 0}
+                  {electionStats.candidatesCount}
                 </Text>
               </View>
             </View>
@@ -384,6 +552,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#14104D",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    color: "#fff",
+    fontSize: 16,
+    marginTop: 12,
   },
   header: {
     flexDirection: "row",
