@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,119 +10,152 @@ import {
   TextInput,
   Alert,
   Image,
+  RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useFocusEffect } from "@react-navigation/native";
+import { getCandidates, getElections, deleteCandidate } from "../services/api";
 
 const CandidateManagementScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [candidates, setCandidates] = useState([]);
+  const [elections, setElections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Sample candidates data - replace with actual data from your backend
-  const [candidates, setCandidates] = useState([
-    {
-      id: 1,
-      name: "John Doe",
-      campaignPromises:
-        "Improve campus facilities, enhance student services, and promote academic excellence",
-      electionId: 1,
-      electionTitle: "Student Union President 2025",
-      profileImage: "https://via.placeholder.com/60",
-      status: "active",
-      votesCount: 245,
-    },
-    {
-      id: 2,
-      name: "Jane Smith",
-      campaignPromises:
-        "Modernize campus infrastructure, create more study spaces, and improve dining options",
-      electionId: 1,
-      electionTitle: "Student Union President 2025",
-      profileImage: "https://via.placeholder.com/60",
-      status: "active",
-      votesCount: 189,
-    },
-    {
-      id: 3,
-      name: "Mike Johnson",
-      campaignPromises:
-        "Increase student welfare programs, reduce fees, and enhance career services",
-      electionId: 1,
-      electionTitle: "Student Union President 2025",
-      profileImage: "https://via.placeholder.com/60",
-      status: "active",
-      votesCount: 156,
-    },
-    {
-      id: 4,
-      name: "Dr. Sarah Wilson",
-      campaignPromises:
-        "Improve faculty-student relations, enhance research opportunities, and modernize curriculum",
-      electionId: 2,
-      electionTitle: "Faculty Representative Election",
-      profileImage: "https://via.placeholder.com/60",
-      status: "active",
-      votesCount: 78,
-    },
-    {
-      id: 5,
-      name: "Alex Rodriguez",
-      campaignPromises:
-        "Upgrade sports facilities, create more athletic programs, and promote sports scholarships",
-      electionId: 3,
-      electionTitle: "Sports Director Election",
-      profileImage: "https://via.placeholder.com/60",
-      status: "completed",
-      votesCount: 234,
-    },
-  ]);
+  // Helper function to get initials from name
+  const getInitials = (name) => {
+    if (!name) return "??";
+    return name
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase())
+      .join("")
+      .substring(0, 2);
+  };
 
-  // Get unique elections for filter(Longer version for future purposes)
-  // const getUniqueElections = () => {
-  //   const seen = new Set();
-  //   return candidates
-  //     .filter((candidate) => {
-  //       const key = `${candidate.electionId}-${candidate.electionTitle}`;
-  //       if (seen.has(key)) {
-  //         return false;
-  //       }
-  //       seen.add(key);
-  //       return true;
-  //     })
-  //     .map((candidate) => ({
-  //       id: candidate.electionId,
-  //       title: candidate.electionTitle,
-  //     }));
-  // };
-  // const elections = getUniqueElections();
+  // Fetch data from backend
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-  // Extract unique elections from candidates(shorter version)
-  const elections = candidates.reduce((unique, candidate) => {
-    const exists = unique.find(
-      (election) => election.id === candidate.electionId
-    );
-    if (!exists) {
-      unique.push({
-        id: candidate.electionId,
-        title: candidate.electionTitle,
+      console.log("Fetching candidates and elections...");
+
+      // Fetch elections and candidates
+      const [electionsResponse, candidatesResponse] = await Promise.all([
+        getElections(),
+        getCandidates(),
+      ]);
+
+      console.log("Elections Response:", electionsResponse);
+      console.log("Candidates Response:", candidatesResponse);
+
+      // Handle elections response
+      const electionsData = Array.isArray(electionsResponse)
+        ? electionsResponse
+        : [];
+      setElections(electionsData);
+
+      // Handle candidates response
+      const candidatesData = Array.isArray(candidatesResponse)
+        ? candidatesResponse
+        : [];
+
+      // Transform candidates data to match your existing structure
+      const transformedCandidates = candidatesData.map((candidate) => {
+        // Try different possible field names for vote count
+        const votesCount =
+          candidate.votesCount ||
+          candidate.votes_count ||
+          candidate.totalVotes ||
+          candidate.vote_count ||
+          candidate.voteCount ||
+          0;
+
+        console.log(
+          `Candidate ${candidate.name} votes:`,
+          votesCount,
+          "Raw candidate data:",
+          candidate
+        );
+
+        return {
+          id: candidate.id,
+          name: candidate.name,
+          campaignPromises:
+            candidate.manifesto ||
+            candidate.campaignPromises ||
+            "No manifesto provided",
+          manifesto:
+            candidate.manifesto ||
+            candidate.campaignPromises ||
+            "No manifesto provided",
+          electionId: candidate.electionId,
+          electionTitle: candidate.electionName || "Unknown Election",
+          profileImage:
+            candidate.profileImageUrl || candidate.profileImage || null,
+          status: candidate.status || "active",
+          votesCount: votesCount,
+          position: candidate.position || "Unknown Position",
+          level: candidate.level || 1,
+          createdAt: candidate.createdAt,
+          updatedAt: candidate.updatedAt,
+        };
       });
+
+      setCandidates(transformedCandidates);
+      console.log("Transformed candidates:", transformedCandidates);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      setError(error.message || "Failed to load data");
+
+      Alert.alert(
+        "Error",
+        `Failed to load candidates: ${
+          error.message || "Please check your connection and try again."
+        }`
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    return unique;
+  };
+
+  // Fetch data on component mount and when screen comes into focus
+  useEffect(() => {
+    fetchData();
   }, []);
-  
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [])
+  );
+
+  // Pull to refresh handler
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchData();
+  }, []);
+
+  // Create filter options based on fetched elections
   const filterOptions = [
     { key: "all", label: "All Elections" },
     ...elections.map((election) => ({
       key: election.id.toString(),
       label:
-        election.title.length > 20
-          ? election.title.substring(0, 20) + "..."
-          : election.title,
+        election.name && election.name.length > 20
+          ? election.name.substring(0, 20) + "..."
+          : election.name || "Unknown Election",
     })),
   ];
 
   const getStatusColor = (status) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case "active":
         return ["#4ECDC4", "#44A08D"];
       case "completed":
@@ -135,7 +168,7 @@ const CandidateManagementScreen = ({ navigation }) => {
   };
 
   const getStatusIcon = (status) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case "active":
         return "play-circle";
       case "completed":
@@ -156,9 +189,39 @@ const CandidateManagementScreen = ({ navigation }) => {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => {
-            setCandidates(candidates.filter((c) => c.id !== candidate.id));
-            Alert.alert("Success", "Candidate deleted successfully");
+          onPress: async () => {
+            try {
+              console.log("Deleting candidate:", candidate.id);
+
+              // Call the delete API
+              const result = await deleteCandidate(candidate.id);
+
+              if (result.success) {
+                // Remove from local state immediately for better UX
+                setCandidates((prevCandidates) =>
+                  prevCandidates.filter((c) => c.id !== candidate.id)
+                );
+
+                Alert.alert(
+                  "Success",
+                  result.message || "Candidate deleted successfully"
+                );
+
+                // Refresh data from backend to ensure consistency
+                await fetchData();
+              } else {
+                Alert.alert(
+                  "Error",
+                  result.message || "Failed to delete candidate"
+                );
+              }
+            } catch (error) {
+              console.error("Error deleting candidate:", error);
+              Alert.alert(
+                "Error",
+                error.message || "Failed to delete candidate. Please try again."
+              );
+            }
           },
         },
       ]
@@ -167,28 +230,43 @@ const CandidateManagementScreen = ({ navigation }) => {
 
   const filteredCandidates = candidates.filter((candidate) => {
     const matchesSearch =
-      candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      candidate.campaignPromises
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
-      candidate.electionTitle.toLowerCase().includes(searchQuery.toLowerCase());
+      candidate.name &&
+      (candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        candidate.campaignPromises
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        candidate.electionTitle
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()));
 
     const matchesFilter =
       selectedFilter === "all" ||
-      candidate.electionId.toString() === selectedFilter;
+      candidate.electionId?.toString() === selectedFilter;
 
     return matchesSearch && matchesFilter;
   });
 
   // Group candidates by election
   const groupedCandidates = filteredCandidates.reduce((acc, candidate) => {
-    const electionTitle = candidate.electionTitle;
+    const electionTitle = candidate.electionTitle || "Unknown Election";
     if (!acc[electionTitle]) {
       acc[electionTitle] = [];
     }
     acc[electionTitle].push(candidate);
     return acc;
   }, {});
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#14104D" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+          <Text style={styles.loadingText}>Loading candidates...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -218,7 +296,10 @@ const CandidateManagementScreen = ({ navigation }) => {
 
       <View style={styles.titleContainer}>
         <Text style={styles.screenTitle}>Candidate Management</Text>
-        <Text style={styles.screenSubtitle}>Manage all candidates</Text>
+        <Text style={styles.screenSubtitle}>
+          Manage all candidates ({candidates.length} total)
+        </Text>
+        {error && <Text style={styles.errorText}>⚠️ {error}</Text>}
       </View>
 
       <View style={styles.searchContainer}>
@@ -263,7 +344,18 @@ const CandidateManagementScreen = ({ navigation }) => {
         </ScrollView>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={["#4ECDC4"]}
+            tintColor="#4ECDC4"
+          />
+        }
+      >
         {Object.keys(groupedCandidates).length > 0 ? (
           Object.entries(groupedCandidates).map(
             ([electionTitle, electionCandidates]) => (
@@ -281,13 +373,30 @@ const CandidateManagementScreen = ({ navigation }) => {
                   <View key={candidate.id} style={styles.candidateCard}>
                     <View style={styles.candidateHeader}>
                       <View style={styles.candidateInfo}>
-                        <Image
-                          source={{ uri: candidate.profileImage }}
-                          style={styles.profileImage}
-                        />
+                        {candidate.profileImage ? (
+                          <Image
+                            source={{ uri: candidate.profileImage }}
+                            style={styles.profileImage}
+                            onError={(e) => {
+                              console.log(
+                                "Image load error:",
+                                e.nativeEvent.error
+                              );
+                            }}
+                          />
+                        ) : (
+                          <View style={styles.initialsContainer}>
+                            <Text style={styles.initialsText}>
+                              {getInitials(candidate.name)}
+                            </Text>
+                          </View>
+                        )}
                         <View style={styles.candidateDetails}>
                           <Text style={styles.candidateName}>
                             {candidate.name}
+                          </Text>
+                          <Text style={styles.candidatePosition}>
+                            {candidate.position}
                           </Text>
                           <Text
                             style={styles.candidateCampaignPromises}
@@ -309,28 +418,51 @@ const CandidateManagementScreen = ({ navigation }) => {
                             style={styles.statusIcon}
                           />
                           <Text style={styles.statusText}>
-                            {candidate.status.charAt(0).toUpperCase() +
-                              candidate.status.slice(1)}
+                            {candidate.status?.charAt(0).toUpperCase() +
+                              candidate.status?.slice(1) || "Active"}
                           </Text>
                         </LinearGradient>
                       </View>
                     </View>
 
                     <View style={styles.candidateStats}>
-                      <View style={styles.statItem}>
+                      {/* <View style={styles.statItem}>
                         <Ionicons name="thumbs-up" size={16} color="#6C4EF2" />
                         <Text style={styles.statText}>
                           {candidate.votesCount} votes
                         </Text>
+                      </View> */}
+                      <View style={styles.statItem}>
+                        <Ionicons name="school" size={16} color="#4ECDC4" />
+                        <Text style={styles.statText}>
+                          Level {candidate.level || 1}
+                        </Text>
                       </View>
+                      {/* <View style={styles.statItem}>
+                        <Ionicons name="person" size={16} color="#FFD93D" />
+                        <Text style={styles.statText}>ID: {candidate.id}</Text>
+                      </View> */}
                     </View>
 
                     <View style={styles.actionRow}>
                       <TouchableOpacity
                         style={styles.actionButton}
-                        onPress={() =>
-                          navigation.navigate("EditCandidate", { candidate })
-                        }
+                        onPress={() => {
+                          console.log("Candidate ID:", candidate.id);
+                          console.log("Full candidate object:", candidate);
+
+                          if (!candidate.id) {
+                            Alert.alert(
+                              "Error",
+                              "Candidate ID is missing. Cannot edit this candidate."
+                            );
+                            return;
+                          }
+
+                          navigation.navigate("EditCandidate", {
+                            candidateId: candidate.id,
+                          });
+                        }}
                       >
                         <Ionicons name="create" size={20} color="#4ECDC4" />
                         <Text style={styles.actionButtonText}>Edit</Text>
@@ -362,9 +494,21 @@ const CandidateManagementScreen = ({ navigation }) => {
             <Text style={styles.emptyTitle}>No Candidates Found</Text>
             <Text style={styles.emptySubtitle}>
               {searchQuery
-                ? "Try adjusting your search"
+                ? "Try adjusting your search or filter"
                 : "Add candidates to get started"}
             </Text>
+            <TouchableOpacity
+              style={styles.addCandidateButton}
+              onPress={() => navigation.navigate("CreateCandidate")}
+            >
+              <LinearGradient
+                colors={["#4ECDC4", "#44A08D"]}
+                style={styles.addCandidateButtonGradient}
+              >
+                <Ionicons name="add" size={20} color="#fff" />
+                <Text style={styles.addCandidateButtonText}>Add Candidate</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -376,6 +520,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#14104D",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    color: "#fff",
+    fontSize: 16,
+    marginTop: 12,
   },
   header: {
     flexDirection: "row",
@@ -418,6 +572,14 @@ const styles = StyleSheet.create({
     color: "#B8B8B8",
     fontSize: 16,
     marginTop: 4,
+  },
+  errorText: {
+    color: "#FF6B6B",
+    fontSize: 14,
+    marginTop: 8,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    padding: 8,
+    borderRadius: 6,
   },
   searchContainer: {
     paddingHorizontal: 24,
@@ -511,6 +673,21 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     marginRight: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+  },
+  initialsContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#4ECDC4",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  initialsText: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
   },
   candidateDetails: {
     flex: 1,
@@ -519,6 +696,12 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "bold",
+    marginBottom: 4,
+  },
+  candidatePosition: {
+    color: "#4ECDC4",
+    fontSize: 14,
+    fontWeight: "600",
     marginBottom: 4,
   },
   candidateCampaignPromises: {
@@ -546,11 +729,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   candidateStats: {
+    flexDirection: "row",
     marginBottom: 16,
   },
   statItem: {
     flexDirection: "row",
     alignItems: "center",
+    marginRight: 20,
   },
   statText: {
     color: "#B8B8B8",
@@ -603,6 +788,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 8,
     textAlign: "center",
+    marginBottom: 24,
+  },
+  addCandidateButton: {
+    borderRadius: 25,
+    overflow: "hidden",
+  },
+  addCandidateButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  addCandidateButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
   },
 });
 

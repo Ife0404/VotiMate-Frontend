@@ -2,32 +2,31 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 
-const BASE_URL = "http://172.20.10.2:8080";
-const FACIAL_URL = "http://172.20.10.2:5000";
+const BASE_URL = "http://192.168.1.104:8080";
+const FACIAL_URL = "http://192.168.1.104:5000";
 
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
 });
 
-// ✅ FIXED: Check for both userToken and adminToken
 api.interceptors.request.use(
   async (config) => {
     // First try to get userToken (for students)
     let token = await AsyncStorage.getItem("userToken");
-    
+
     // If no userToken, try adminToken (for admins)
     if (!token) {
       token = await AsyncStorage.getItem("adminToken");
     }
-    
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
       console.log("Token added to request:", token.substring(0, 20) + "...");
     } else {
       console.log("No token found in AsyncStorage");
     }
-    
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -99,7 +98,10 @@ const createApiInstance = (tokenKey) => {
       const token = await AsyncStorage.getItem(tokenKey);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log(`${tokenKey} added to request:`, token.substring(0, 20) + "...");
+        console.log(
+          `${tokenKey} added to request:`,
+          token.substring(0, 20) + "..."
+        );
       }
       return config;
     },
@@ -186,7 +188,6 @@ export const login = async (data) => {
     };
   }
 };
-
 
 // export const login = async (data) => {
 //   const payload = {
@@ -289,35 +290,38 @@ export const getAdminProfile = async () => {
   try {
     const adminToken = await AsyncStorage.getItem("adminToken");
     console.log("Admin token exists:", !!adminToken);
-    console.log("Admin token preview:", adminToken ? adminToken.substring(0, 20) + "..." : "null");
-    
+    console.log(
+      "Admin token preview:",
+      adminToken ? adminToken.substring(0, 20) + "..." : "null"
+    );
+
     if (!adminToken) {
       throw new Error("No admin token found. Please login again.");
     }
-    
+
     const response = await adminApi.get("/api/admin/profile");
     console.log("Admin profile response:", response);
-    
+
     const adminData = {
       firstName: response.firstName || "",
       lastName: response.lastName || "",
       matricNumber: response.matricNumber || "",
       department: response.department || "",
     };
-    
+
     await AsyncStorage.setItem("adminData", JSON.stringify(adminData));
-    
+
     return {
       ...adminData,
       position: "Administrator",
     };
   } catch (error) {
     console.error("Failed to fetch admin profile:", error);
-    
+
     // Fallback to cached data
     const adminMatricNumber = await AsyncStorage.getItem("adminMatricNumber");
     const adminData = await AsyncStorage.getItem("adminData");
-    
+
     if (adminData) {
       const parsed = JSON.parse(adminData);
       return {
@@ -328,7 +332,7 @@ export const getAdminProfile = async () => {
         position: "Administrator",
       };
     }
-    
+
     throw error;
   }
 };
@@ -394,15 +398,15 @@ export const getElections = async () => {
   return await api.get(`/api/elections?t=${timestamp}`);
 };
 
-export const getCandidates = async (electionId = null) => {
-  const timestamp = new Date().getTime();
-  if (electionId) {
-    return await api.get(
-      `/api/elections/${electionId}/candidates?t=${timestamp}`
-    );
-  }
-  return await api.get(`/api/candidates?t=${timestamp}`);
-};
+// export const getCandidates = async (electionId = null) => {
+//   const timestamp = new Date().getTime();
+//   if (electionId) {
+//     return await api.get(
+//       `/api/elections/${electionId}/candidates?t=${timestamp}`
+//     );
+//   }
+//   return await api.get(`/api/candidates?t=${timestamp}`);
+// };
 
 export const getCandidateDetails = async (candidateId) => {
   const timestamp = new Date().getTime();
@@ -603,51 +607,51 @@ export const getElectionPositions = async (electionId) => {
   }
 };
 
-export const createCandidate = async (candidateData) => {
-  try {
-    const formData = new FormData();
+// export const createCandidate = async (candidateData) => {
+//   try {
+//     const formData = new FormData();
 
-    // Create the candidate object matching your Spring Boot DTO
-    const candidatePayload = {
-      name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
-      manifesto: candidateData.manifesto,
-      position: candidateData.position,
-      level: parseInt(candidateData.level),
-      electionName: candidateData.electionName,
-    };
+//     // Create the candidate object matching your Spring Boot DTO
+//     const candidatePayload = {
+//       name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
+//       manifesto: candidateData.manifesto,
+//       position: candidateData.position,
+//       level: parseInt(candidateData.level),
+//       electionName: candidateData.electionName,
+//     };
 
-    // Append the candidate data as a JSON blob with proper content type
-    formData.append("candidate", {
-      string: JSON.stringify(candidatePayload),
-      type: "application/json",
-    });
+//     // Append the candidate data as a JSON blob with proper content type
+//     formData.append("candidate", {
+//       string: JSON.stringify(candidatePayload),
+//       type: "application/json",
+//     });
 
-    // Add image if provided (React Native format)
-    if (candidateData.profileImage && candidateData.profileImage.uri) {
-      formData.append("image", {
-        uri: candidateData.profileImage.uri,
-        type: candidateData.profileImage.type || "image/jpeg",
-        name: candidateData.profileImage.fileName || "profile.jpg",
-      });
-    }
+//     // Add image if provided (React Native format)
+//     if (candidateData.profileImage && candidateData.profileImage.uri) {
+//       formData.append("image", {
+//         uri: candidateData.profileImage.uri,
+//         type: candidateData.profileImage.type || "image/jpeg",
+//         name: candidateData.profileImage.fileName || "profile.jpg",
+//       });
+//     }
 
-    // Don't set Content-Type header - let the browser/RN set it automatically
-    // This ensures proper boundary is set for multipart/form-data
-    const response = await api.post("/api/candidates", formData);
+//     // Don't set Content-Type header - let the browser/RN set it automatically
+//     // This ensures proper boundary is set for multipart/form-data
+//     const response = await api.post("/api/candidates", formData);
 
-    return response;
-  } catch (error) {
-    console.error("Error creating candidate:", error);
-    throw {
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Failed to create candidate",
-      status: error.response?.status,
-      details: error.response?.data,
-    };
-  }
-};
+//     return response;
+//   } catch (error) {
+//     console.error("Error creating candidate:", error);
+//     throw {
+//       message:
+//         error.response?.data?.message ||
+//         error.message ||
+//         "Failed to create candidate",
+//       status: error.response?.status,
+//       details: error.response?.data,
+//     };
+//   }
+// };
 
 // Additional helper function to get candidates by election name
 export const getCandidatesByElectionName = async (electionName) => {
@@ -669,9 +673,10 @@ export const updateCandidate = async (candidateId, candidateData) => {
     // Create the candidate object matching your Spring Boot DTO
     const candidatePayload = {
       name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
-      campaignPromises: candidateData.campaignPromises, // Now correctly mapped
+      manifesto: candidateData.manifesto || candidateData.campaignPromises,
       position: candidateData.position,
       level: parseInt(candidateData.level),
+      electionName: candidateData.electionName,
     };
 
     formData.append("candidate", JSON.stringify(candidatePayload));
@@ -680,13 +685,13 @@ export const updateCandidate = async (candidateId, candidateData) => {
     if (candidateData.profileImage && candidateData.profileImage.uri) {
       formData.append("image", {
         uri: candidateData.profileImage.uri,
-        type: "image/jpeg",
-        name: "profile.jpg",
+        type: candidateData.profileImage.type || "image/jpeg",
+        name: candidateData.profileImage.fileName || "profile.jpg",
       });
     }
 
-    const response = await api.put(
-      `/api/candidates/${candidateId}/election/${candidateData.electionId}`,
+    const response = await adminApi.put(
+      `/api/candidates/${candidateId}`,
       formData,
       {
         headers: {
@@ -694,10 +699,16 @@ export const updateCandidate = async (candidateId, candidateData) => {
         },
       }
     );
-    return response;
+
+    return {
+      success: true,
+      data: response,
+      message: "Candidate updated successfully",
+    };
   } catch (error) {
     console.error("Error updating candidate:", error);
-    throw {
+    return {
+      success: false,
       message: error.message || "Failed to update candidate",
       status: error.status,
       details: error.details,
@@ -765,11 +776,11 @@ export const updateElection = async (electionId, electionData) => {
     };
 
     const response = await api.put(`/api/elections/${electionId}`, payload);
-    
+
     return {
       success: true,
       data: response,
-      message: "Election updated successfully"
+      message: "Election updated successfully",
     };
   } catch (error) {
     console.error("Error updating election:", error);
@@ -777,7 +788,7 @@ export const updateElection = async (electionId, electionData) => {
       success: false,
       message: error.message || "Failed to update election",
       details: error.details,
-      status: error.status
+      status: error.status,
     };
   }
 };
@@ -785,11 +796,11 @@ export const updateElection = async (electionId, electionData) => {
 export const deleteElection = async (electionId) => {
   try {
     const response = await api.delete(`/api/elections/${electionId}`);
-    
+
     return {
       success: true,
       data: response,
-      message: "Election deleted successfully"
+      message: "Election deleted successfully",
     };
   } catch (error) {
     console.error("Error deleting election:", error);
@@ -797,7 +808,7 @@ export const deleteElection = async (electionId) => {
       success: false,
       message: error.message || "Failed to delete election",
       details: error.details,
-      status: error.status
+      status: error.status,
     };
   }
 };
@@ -805,12 +816,14 @@ export const deleteElection = async (electionId) => {
 export const getElectionById = async (electionId) => {
   try {
     const timestamp = new Date().getTime();
-    const response = await api.get(`/api/elections/${electionId}?t=${timestamp}`);
-    
+    const response = await api.get(
+      `/api/elections/${electionId}?t=${timestamp}`
+    );
+
     return {
       success: true,
       data: response,
-      message: "Election fetched successfully"
+      message: "Election fetched successfully",
     };
   } catch (error) {
     console.error("Error fetching election:", error);
@@ -818,7 +831,7 @@ export const getElectionById = async (electionId) => {
       success: false,
       message: error.message || "Failed to fetch election",
       details: error.details,
-      status: error.status
+      status: error.status,
     };
   }
 };
@@ -865,7 +878,7 @@ export const getAdminStatistics = async () => {
 export const getElectionStatistics = async (electionId = null) => {
   try {
     const timestamp = new Date().getTime();
-    const url = electionId 
+    const url = electionId
       ? `/api/elections/${electionId}/statistics?t=${timestamp}`
       : `/api/elections/statistics?t=${timestamp}`;
     const response = await api.get(url);
@@ -873,5 +886,149 @@ export const getElectionStatistics = async (electionId = null) => {
   } catch (error) {
     console.error("Error fetching election statistics:", error);
     throw error;
+  }
+};
+
+// Add these updated functions to your api.js file
+
+// CANDIDATE FUNCTIONS - Updated for better backend integration
+
+export const deleteCandidate = async (candidateId) => {
+  try {
+    const response = await adminApi.delete(`/api/candidates/${candidateId}`);
+
+    return {
+      success: true,
+      data: response,
+      message: "Candidate deleted successfully",
+    };
+  } catch (error) {
+    console.error("Error deleting candidate:", error);
+    return {
+      success: false,
+      message: error.message || "Failed to delete candidate",
+      details: error.details,
+      status: error.status,
+    };
+  }
+};
+
+// Updated getCandidates function with better error handling
+export const getCandidates = async (electionId = null) => {
+  try {
+    const timestamp = new Date().getTime();
+    let url;
+
+    if (electionId) {
+      url = `/api/candidates/election/${electionId}?t=${timestamp}`;
+    } else {
+      url = `/api/candidates?t=${timestamp}`;
+    }
+
+    const response = await api.get(url);
+
+    // Transform the response to ensure consistent structure
+    const candidates = Array.isArray(response) ? response : [response];
+
+    return candidates.map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      manifesto:
+        candidate.manifesto ||
+        candidate.campaignPromises ||
+        "No manifesto provided",
+      campaignPromises:
+        candidate.campaignPromises ||
+        candidate.manifesto ||
+        "No campaign promises provided",
+      electionId: candidate.electionId,
+      electionName: candidate.electionName || "Unknown Election",
+      profileImageUrl: candidate.profileImageUrl,
+      status: candidate.status || "active",
+      votesCount: candidate.votesCount || 0,
+      position: candidate.position || "Unknown Position",
+      level: candidate.level || 1,
+      createdAt: candidate.createdAt,
+      updatedAt: candidate.updatedAt,
+    }));
+  } catch (error) {
+    console.error("Error fetching candidates:", error);
+    throw {
+      message: error.message || "Failed to fetch candidates",
+      status: error.status,
+      details: error.details,
+    };
+  }
+};
+
+// Updated createCandidate function with better FormData handling
+export const createCandidate = async (candidateData) => {
+  try {
+    const formData = new FormData();
+
+    // Create the candidate object matching your Spring Boot DTO
+    const candidatePayload = {
+      name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
+      manifesto: candidateData.manifesto || candidateData.campaignPromises,
+      position: candidateData.position,
+      level: parseInt(candidateData.level),
+      electionName: candidateData.electionName,
+    };
+
+    // Append the candidate data as a JSON blob
+    formData.append("candidate", JSON.stringify(candidatePayload));
+
+    // Add image if provided (React Native format)
+    if (candidateData.profileImage && candidateData.profileImage.uri) {
+      formData.append("image", {
+        uri: candidateData.profileImage.uri,
+        type: candidateData.profileImage.type || "image/jpeg",
+        name: candidateData.profileImage.fileName || "profile.jpg",
+      });
+    }
+
+    const response = await adminApi.post("/api/candidates", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
+    return {
+      success: true,
+      data: response,
+      message: "Candidate created successfully",
+    };
+  } catch (error) {
+    console.error("Error creating candidate:", error);
+    return {
+      success: false,
+      message: error.message || "Failed to create candidate",
+      status: error.status,
+      details: error.details,
+    };
+  }
+};
+
+// Get candidate by ID
+export const getCandidateById = async (candidateId) => {
+  try {
+    const timestamp = new Date().getTime();
+    const response = await api.get(
+      `/api/candidates/${candidateId}?t=${timestamp}`
+    );
+
+    return {
+      success: true,
+      data: response,
+      message: "Candidate fetched successfully",
+    };
+  } catch (error) {
+    console.error("Error fetching candidate:", error);
+    return {
+      success: false,
+      message: error.message || "Failed to fetch candidate",
+      status: error.status,
+      details: error.details,
+    };
   }
 };

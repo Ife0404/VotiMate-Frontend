@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { getElections, getCandidates } from "../services/api"; // Adjust the import path as needed
+import { getElections, getCandidates } from "../services/api";
 
 const AdminMainScreen = ({ navigation }) => {
   const [stats, setStats] = useState([

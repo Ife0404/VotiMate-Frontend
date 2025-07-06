@@ -384,12 +384,12 @@ const ElectionManagementScreen = ({ navigation }) => {
                     {election.candidatesCount} Candidates
                   </Text>
                 </View>
-                <View style={styles.statItem}>
+                {/* <View style={styles.statItem}>
                   <Ionicons name="checkmark-circle" size={16} color="#4ECDC4" />
                   <Text style={styles.statText}>
                     {election.votersCount} Votes Cast
                   </Text>
-                </View>
+                </View> */}
               </View>
             </View>
 
@@ -398,7 +398,7 @@ const ElectionManagementScreen = ({ navigation }) => {
                 style={styles.actionButton}
                 onPress={() =>
                   navigation.navigate("EditElection", {
-                    election: election.originalData,
+                    electionId: election.id,
                     onUpdate: fetchElections,
                   })
                 }

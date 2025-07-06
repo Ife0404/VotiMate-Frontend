@@ -14,37 +14,107 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  getCandidateById,
+  updateCandidate,
+  deleteCandidate,
+  getElections,
+} from "../services/api";
 
 const EditCandidateScreen = ({ navigation, route }) => {
-  const { candidate } = route.params;
+  const { candidateId } = route.params || {}; // Add fallback for undefined params
+
+  // State declarations - these were missing!
+  const [initialLoading, setInitialLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [candidate, setCandidate] = useState(null);
+  const [elections, setElections] = useState([]);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
-    party: "",
-    description: "",
-    electionId: "",
+    position: "",
+    manifesto: "",
+    electionName: "",
+    level: "",
   });
 
-  // Sample elections for dropdown - replace with actual data
-  const [elections] = useState([
-    { id: 1, title: "Student Union President 2025" },
-    { id: 2, title: "Faculty Representative Election" },
-    { id: 3, title: "Sports Director Election" },
-  ]);
-
+  // Add validation for candidateId
   useEffect(() => {
-    if (candidate) {
-      setFormData({
-        firstName: candidate.firstName || "",
-        lastName: candidate.lastName || "",
-        party: candidate.party || "",
-        description: candidate.description || "",
-        electionId: candidate.electionId || "",
-      });
+    console.log("Route params:", route.params);
+    console.log("Candidate ID received:", candidateId);
+
+    if (!candidateId) {
+      Alert.alert(
+        "Error",
+        "No candidate ID provided. Cannot load candidate data.",
+        [{ text: "OK", onPress: () => navigation.goBack() }]
+      );
+      return;
     }
-  }, [candidate]);
+
+    loadCandidateData();
+    loadElections();
+  }, [candidateId]);
+
+  const loadCandidateData = async () => {
+    if (!candidateId) {
+      console.error("No candidate ID available");
+      return;
+    }
+
+    try {
+      setInitialLoading(true);
+      console.log("Fetching candidate with ID:", candidateId);
+
+      const response = await getCandidateById(candidateId);
+      console.log("API Response:", response);
+
+      if (response.success) {
+        const candidateData = response.data;
+        setCandidate(candidateData);
+
+        // Split the name into firstName and lastName
+        const nameParts = candidateData.name
+          ? candidateData.name.split(" ")
+          : ["", ""];
+        const firstName = nameParts[0] || "";
+        const lastName = nameParts.slice(1).join(" ") || "";
+
+        setFormData({
+          firstName,
+          lastName,
+          position: candidateData.position || "",
+          manifesto: candidateData.manifesto || "",
+          electionName: candidateData.electionName || "",
+          level: candidateData.level ? candidateData.level.toString() : "",
+        });
+      } else {
+        console.error("API Error:", response.message);
+        Alert.alert(
+          "Error",
+          response.message || "Failed to load candidate data"
+        );
+        navigation.goBack();
+      }
+    } catch (error) {
+      console.error("Error loading candidate:", error);
+      Alert.alert("Error", "Failed to load candidate data");
+      navigation.goBack();
+    } finally {
+      setInitialLoading(false);
+    }
+  };
+
+  const loadElections = async () => {
+    try {
+      const electionsData = await getElections();
+      setElections(Array.isArray(electionsData) ? electionsData : []);
+    } catch (error) {
+      console.error("Error loading elections:", error);
+      setElections([]);
+    }
+  };
 
   const handleInputChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
@@ -59,16 +129,20 @@ const EditCandidateScreen = ({ navigation, route }) => {
       Alert.alert("Error", "Please enter candidate's last name");
       return false;
     }
-    if (!formData.party.trim()) {
-      Alert.alert("Error", "Please enter candidate's party");
+    if (!formData.position.trim()) {
+      Alert.alert("Error", "Please enter candidate's position");
       return false;
     }
-    if (!formData.description.trim()) {
-      Alert.alert("Error", "Please enter candidate description");
+    if (!formData.manifesto.trim()) {
+      Alert.alert("Error", "Please enter candidate manifesto");
       return false;
     }
-    if (!formData.electionId) {
-      Alert.alert("Error", "Please select an election");
+    if (!formData.electionName.trim()) {
+      Alert.alert("Error", "Please enter election name");
+      return false;
+    }
+    if (!formData.level.trim()) {
+      Alert.alert("Error", "Please enter candidate level");
       return false;
     }
     return true;
@@ -79,16 +153,29 @@ const EditCandidateScreen = ({ navigation, route }) => {
 
     setLoading(true);
     try {
-      // TODO: Implement update candidate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const updateData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        position: formData.position,
+        manifesto: formData.manifesto,
+        electionName: formData.electionName,
+        level: parseInt(formData.level),
+      };
 
-      Alert.alert("Success", "Candidate updated successfully!", [
-        {
-          text: "OK",
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      const response = await updateCandidate(candidateId, updateData);
+
+      if (response.success) {
+        Alert.alert("Success", "Candidate updated successfully!", [
+          {
+            text: "OK",
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      } else {
+        Alert.alert("Error", response.message || "Failed to update candidate");
+      }
     } catch (error) {
+      console.error("Update error:", error);
       Alert.alert("Error", "Failed to update candidate. Please try again.");
     } finally {
       setLoading(false);
@@ -98,7 +185,7 @@ const EditCandidateScreen = ({ navigation, route }) => {
   const handleDeleteCandidate = () => {
     Alert.alert(
       "Delete Candidate",
-      `Are you sure you want to delete "${candidate.firstName} ${candidate.lastName}"? This action cannot be undone.`,
+      `Are you sure you want to delete "${formData.firstName} ${formData.lastName}"? This action cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -113,16 +200,20 @@ const EditCandidateScreen = ({ navigation, route }) => {
   const confirmDelete = async () => {
     setDeleteLoading(true);
     try {
-      // TODO: Implement delete candidate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const response = await deleteCandidate(candidateId);
 
-      Alert.alert("Success", "Candidate deleted successfully!", [
-        {
-          text: "OK",
-          onPress: () => navigation.navigate("CandidateManagement"),
-        },
-      ]);
+      if (response.success) {
+        Alert.alert("Success", "Candidate deleted successfully!", [
+          {
+            text: "OK",
+            onPress: () => navigation.navigate("CandidateManagement"),
+          },
+        ]);
+      } else {
+        Alert.alert("Error", response.message || "Failed to delete candidate");
+      }
     } catch (error) {
+      console.error("Delete error:", error);
       Alert.alert("Error", "Failed to delete candidate. Please try again.");
     } finally {
       setDeleteLoading(false);
@@ -144,7 +235,37 @@ const EditCandidateScreen = ({ navigation, route }) => {
     );
   };
 
-  const selectedElection = elections.find((e) => e.id === formData.electionId);
+  // Show loading screen while fetching initial data
+  if (initialLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#14104D" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6C4EF2" />
+          <Text style={styles.loadingText}>Loading candidate data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show error if candidate not found
+  if (!candidate) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#14104D" />
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={60} color="#FF6B6B" />
+          <Text style={styles.errorText}>Candidate not found</Text>
+          <TouchableOpacity
+            style={styles.errorButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.errorButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -182,7 +303,7 @@ const EditCandidateScreen = ({ navigation, route }) => {
               <Image
                 source={{
                   uri:
-                    candidate?.profileImage ||
+                    candidate.profileImageUrl ||
                     "https://via.placeholder.com/120x120?text=Photo",
                 }}
                 style={styles.profileImage}
@@ -239,20 +360,41 @@ const EditCandidateScreen = ({ navigation, route }) => {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Party/Affiliation *</Text>
+              <Text style={styles.inputLabel}>Position *</Text>
               <View style={styles.inputContainer}>
                 <Ionicons
-                  name="flag-outline"
+                  name="ribbon-outline"
                   size={20}
                   color="#666"
                   style={styles.inputIcon}
                 />
                 <TextInput
                   style={styles.input}
-                  value={formData.party}
-                  onChangeText={(text) => handleInputChange("party", text)}
-                  placeholder="e.g., Independent, Democratic Party"
+                  value={formData.position}
+                  onChangeText={(text) => handleInputChange("position", text)}
+                  placeholder="Enter position (e.g., President, Vice President)"
                   placeholderTextColor="#999"
+                  editable={!loading && !deleteLoading}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Level *</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons
+                  name="school-outline"
+                  size={20}
+                  color="#666"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.input}
+                  value={formData.level}
+                  onChangeText={(text) => handleInputChange("level", text)}
+                  placeholder="Enter level (e.g., 100, 200, 300)"
+                  placeholderTextColor="#999"
+                  keyboardType="numeric"
                   editable={!loading && !deleteLoading}
                 />
               </View>
@@ -264,45 +406,34 @@ const EditCandidateScreen = ({ navigation, route }) => {
             <Text style={styles.sectionTitle}>Election Assignment</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Election *</Text>
-              <TouchableOpacity
-                style={styles.dropdownContainer}
-                onPress={() => {
-                  // TODO: Implement election picker
-                  Alert.alert(
-                    "Select Election",
-                    "Election picker will be implemented"
-                  );
-                }}
-                disabled={loading || deleteLoading}
-              >
+              <Text style={styles.inputLabel}>Election Name *</Text>
+              <View style={styles.inputContainer}>
                 <Ionicons
-                  name="ballot-outline"
+                  name="checkmark-circle"
                   size={20}
                   color="#666"
                   style={styles.inputIcon}
                 />
-                <Text
-                  style={[
-                    styles.dropdownText,
-                    !selectedElection && styles.placeholderText,
-                  ]}
-                >
-                  {selectedElection
-                    ? selectedElection.title
-                    : "Select an election"}
-                </Text>
-                <Ionicons name="chevron-down" size={20} color="#666" />
-              </TouchableOpacity>
+                <TextInput
+                  style={styles.input}
+                  value={formData.electionName}
+                  onChangeText={(text) =>
+                    handleInputChange("electionName", text)
+                  }
+                  placeholder="e.g., Student Union President 2025"
+                  placeholderTextColor="#999"
+                  editable={!loading && !deleteLoading}
+                />
+              </View>
             </View>
           </View>
 
-          {/* Description */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Description</Text>
+          {/* Manifesto */}
+          {/* <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Manifesto</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Candidate Description *</Text>
+              <Text style={styles.inputLabel}>Candidate Manifesto *</Text>
               <View style={[styles.inputContainer, styles.textAreaContainer]}>
                 <Ionicons
                   name="document-text-outline"
@@ -312,11 +443,9 @@ const EditCandidateScreen = ({ navigation, route }) => {
                 />
                 <TextInput
                   style={[styles.input, styles.textArea]}
-                  value={formData.description}
-                  onChangeText={(text) =>
-                    handleInputChange("description", text)
-                  }
-                  placeholder="Enter candidate's background, qualifications, and platform..."
+                  value={formData.manifesto}
+                  onChangeText={(text) => handleInputChange("manifesto", text)}
+                  placeholder="Enter candidate's manifesto, background, qualifications, and platform..."
                   placeholderTextColor="#999"
                   multiline
                   textAlignVertical="top"
@@ -324,7 +453,7 @@ const EditCandidateScreen = ({ navigation, route }) => {
                 />
               </View>
             </View>
-          </View>
+          </View> */}
 
           {/* Candidate Stats */}
           <View style={styles.statusCard}>
@@ -333,24 +462,26 @@ const EditCandidateScreen = ({ navigation, route }) => {
               <Text style={styles.statusTitle}>Candidate Statistics</Text>
             </View>
             <View style={styles.statusContent}>
-              <View style={styles.statusItem}>
+              {/* <View style={styles.statusItem}>
                 <Text style={styles.statusLabel}>Total Votes:</Text>
                 <Text style={styles.statusValue}>
-                  {candidate?.votesCount || 0}
+                  {candidate.votesCount || 0}
                 </Text>
-              </View>
+              </View> */}
               <View style={styles.statusItem}>
-                <Text style={styles.statusLabel}>Vote Percentage:</Text>
+                <Text style={styles.statusLabel}>Status:</Text>
                 <Text style={styles.statusValue}>
-                  {candidate?.votePercentage || 0}%
+                  {candidate.status || "Active"}
                 </Text>
               </View>
-              <View style={styles.statusItem}>
-                <Text style={styles.statusLabel}>Ranking:</Text>
+              {/* <View style={styles.statusItem}>
+                <Text style={styles.statusLabel}>Created:</Text>
                 <Text style={styles.statusValue}>
-                  #{candidate?.ranking || "N/A"}
+                  {candidate.createdAt
+                    ? new Date(candidate.createdAt).toLocaleDateString()
+                    : "N/A"}
                 </Text>
-              </View>
+              </View> */}
             </View>
           </View>
 
@@ -425,6 +556,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#14104D",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    color: "#fff",
+    fontSize: 16,
+    marginTop: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  errorText: {
+    color: "#fff",
+    fontSize: 18,
+    marginTop: 16,
+    textAlign: "center",
+  },
+  errorButton: {
+    backgroundColor: "#6C4EF2",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 24,
+  },
+  errorButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
   header: {
     flexDirection: "row",
@@ -543,23 +708,6 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     textAlignVertical: "top",
-  },
-  dropdownContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  dropdownText: {
-    flex: 1,
-    fontSize: 16,
-    color: "#333",
-    marginLeft: 12,
-  },
-  placeholderText: {
-    color: "#999",
   },
   statusCard: {
     backgroundColor: "rgba(108, 78, 242, 0.1)",
