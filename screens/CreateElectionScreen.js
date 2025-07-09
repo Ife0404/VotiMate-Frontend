@@ -18,7 +18,7 @@ import { createElection } from "../services/api";
 const CreateElectionScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    name: "", // Changed from 'title' to 'name' to match backend
+    name: "",
     startDate: "",
     startTime: "",
     endDate: "",

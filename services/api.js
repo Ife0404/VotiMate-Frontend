@@ -2,8 +2,8 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 
-const BASE_URL = "http://192.168.1.104:8080";
-const FACIAL_URL = "http://192.168.1.104:5000";
+const BASE_URL = "http://172.20.10.2:8080";
+const FACIAL_URL = "http://172.20.10.2:5000";
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -607,51 +607,51 @@ export const getElectionPositions = async (electionId) => {
   }
 };
 
-// export const createCandidate = async (candidateData) => {
-//   try {
-//     const formData = new FormData();
+export const createCandidate = async (candidateData) => {
+  try {
+    const formData = new FormData();
 
-//     // Create the candidate object matching your Spring Boot DTO
-//     const candidatePayload = {
-//       name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
-//       manifesto: candidateData.manifesto,
-//       position: candidateData.position,
-//       level: parseInt(candidateData.level),
-//       electionName: candidateData.electionName,
-//     };
+    // Create the candidate object matching your Spring Boot DTO
+    const candidatePayload = {
+      name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
+      manifesto: candidateData.manifesto,
+      position: candidateData.position,
+      level: parseInt(candidateData.level),
+      electionName: candidateData.electionName,
+    };
 
-//     // Append the candidate data as a JSON blob with proper content type
-//     formData.append("candidate", {
-//       string: JSON.stringify(candidatePayload),
-//       type: "application/json",
-//     });
+    // Append the candidate data as a JSON blob with proper content type
+    formData.append("candidate", {
+      string: JSON.stringify(candidatePayload),
+      type: "application/json",
+    });
 
-//     // Add image if provided (React Native format)
-//     if (candidateData.profileImage && candidateData.profileImage.uri) {
-//       formData.append("image", {
-//         uri: candidateData.profileImage.uri,
-//         type: candidateData.profileImage.type || "image/jpeg",
-//         name: candidateData.profileImage.fileName || "profile.jpg",
-//       });
-//     }
+    // Add image if provided (React Native format)
+    if (candidateData.profileImage && candidateData.profileImage.uri) {
+      formData.append("image", {
+        uri: candidateData.profileImage.uri,
+        type: candidateData.profileImage.type || "image/jpeg",
+        name: candidateData.profileImage.fileName || "profile.jpg",
+      });
+    }
 
-//     // Don't set Content-Type header - let the browser/RN set it automatically
-//     // This ensures proper boundary is set for multipart/form-data
-//     const response = await api.post("/api/candidates", formData);
+    // Don't set Content-Type header - let the browser/RN set it automatically
+    // This ensures proper boundary is set for multipart/form-data
+    const response = await api.post("/api/candidates", formData);
 
-//     return response;
-//   } catch (error) {
-//     console.error("Error creating candidate:", error);
-//     throw {
-//       message:
-//         error.response?.data?.message ||
-//         error.message ||
-//         "Failed to create candidate",
-//       status: error.response?.status,
-//       details: error.response?.data,
-//     };
-//   }
-// };
+    return response;
+  } catch (error) {
+    console.error("Error creating candidate:", error);
+    throw {
+      message:
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to create candidate",
+      status: error.response?.status,
+      details: error.response?.data,
+    };
+  }
+};
 
 // Additional helper function to get candidates by election name
 export const getCandidatesByElectionName = async (electionName) => {
@@ -962,52 +962,52 @@ export const getCandidates = async (electionId = null) => {
 };
 
 // Updated createCandidate function with better FormData handling
-export const createCandidate = async (candidateData) => {
-  try {
-    const formData = new FormData();
+// export const createCandidate = async (candidateData) => {
+//   try {
+//     const formData = new FormData();
 
-    // Create the candidate object matching your Spring Boot DTO
-    const candidatePayload = {
-      name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
-      manifesto: candidateData.manifesto || candidateData.campaignPromises,
-      position: candidateData.position,
-      level: parseInt(candidateData.level),
-      electionName: candidateData.electionName,
-    };
+//     // Create the candidate object matching your Spring Boot DTO
+//     const candidatePayload = {
+//       name: `${candidateData.firstName} ${candidateData.lastName}`.trim(),
+//       manifesto: candidateData.manifesto || candidateData.campaignPromises,
+//       position: candidateData.position,
+//       level: parseInt(candidateData.level),
+//       electionName: candidateData.electionName,
+//     };
 
-    // Append the candidate data as a JSON blob
-    formData.append("candidate", JSON.stringify(candidatePayload));
+//     // Append the candidate data as a JSON blob
+//     formData.append("candidate", JSON.stringify(candidatePayload));
 
-    // Add image if provided (React Native format)
-    if (candidateData.profileImage && candidateData.profileImage.uri) {
-      formData.append("image", {
-        uri: candidateData.profileImage.uri,
-        type: candidateData.profileImage.type || "image/jpeg",
-        name: candidateData.profileImage.fileName || "profile.jpg",
-      });
-    }
+//     // Add image if provided (React Native format)
+//     if (candidateData.profileImage && candidateData.profileImage.uri) {
+//       formData.append("image", {
+//         uri: candidateData.profileImage.uri,
+//         type: candidateData.profileImage.type || "image/jpeg",
+//         name: candidateData.profileImage.fileName || "profile.jpg",
+//       });
+//     }
 
-    const response = await adminApi.post("/api/candidates", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+//     const response = await adminApi.post("/api/candidates", formData, {
+//       headers: {
+//         "Content-Type": "multipart/form-data",
+//       },
+//     });
 
-    return {
-      success: true,
-      data: response,
-      message: "Candidate created successfully",
-    };
-  } catch (error) {
-    console.error("Error creating candidate:", error);
-    return {
-      success: false,
-      message: error.message || "Failed to create candidate",
-      status: error.status,
-      details: error.details,
-    };
-  }
-};
+//     return {
+//       success: true,
+//       data: response,
+//       message: "Candidate created successfully",
+//     };
+//   } catch (error) {
+//     console.error("Error creating candidate:", error);
+//     return {
+//       success: false,
+//       message: error.message || "Failed to create candidate",
+//       status: error.status,
+//       details: error.details,
+//     };
+//   }
+// };
 
 // Get candidate by ID
 export const getCandidateById = async (candidateId) => {

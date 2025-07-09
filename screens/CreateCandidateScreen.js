@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   TextInput,
   Image,
 } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
@@ -22,13 +23,28 @@ const CreateCandidateScreen = ({ navigation }) => {
     lastName: "",
     level: "",
     position: "",
-    manifesto: "", // Changed from campaignPromises to manifesto
-    electionName: "", // Changed from selectedElectionId to electionName
+    manifesto: "",
+    electionName: "",
     profileImage: null,
   });
-
   const [loading, setLoading] = useState(false);
   const [imageUri, setImageUri] = useState(null);
+  const [elections, setElections] = useState([]);
+
+  useEffect(() => {
+    api
+      .getActiveElections()
+      .then((response) => {
+        setElections(response);
+        if (response.length > 0) {
+          setFormData((prev) => ({ ...prev, electionName: response[0].name }));
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to fetch elections:", error);
+        Alert.alert("Error", "Failed to load elections. Please try again.");
+      });
+  }, []);
 
   const handleInputChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
@@ -37,21 +53,19 @@ const CreateCandidateScreen = ({ navigation }) => {
   const pickImage = async () => {
     const permissionResult =
       await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permissionResult.granted === false) {
+    if (!permissionResult.granted) {
       Alert.alert(
         "Permission Required",
         "Permission to access camera roll is required!"
       );
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
-
     if (!result.canceled) {
       setImageUri(result.assets[0].uri);
       setFormData({ ...formData, profileImage: result.assets[0] });
@@ -60,20 +74,18 @@ const CreateCandidateScreen = ({ navigation }) => {
 
   const takePhoto = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (permissionResult.granted === false) {
+    if (!permissionResult.granted) {
       Alert.alert(
         "Permission Required",
         "Permission to access camera is required!"
       );
       return;
     }
-
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
-
     if (!result.canceled) {
       setImageUri(result.assets[0].uri);
       setFormData({ ...formData, profileImage: result.assets[0] });
@@ -94,46 +106,49 @@ const CreateCandidateScreen = ({ navigation }) => {
       { field: "lastName", name: "Last Name" },
       { field: "level", name: "Level" },
       { field: "position", name: "Position" },
-      { field: "electionName", name: "Election Name" }, // Updated field name
-      { field: "manifesto", name: "Manifesto" }, // Updated field name
+      { field: "electionName", name: "Election Name" },
+      { field: "manifesto", name: "Manifesto" },
     ];
-
     for (const { field, name } of requiredFields) {
       if (!formData[field]?.toString().trim()) {
         Alert.alert("Error", `Please enter ${name}`);
         return false;
       }
     }
-
     if (formData.manifesto.length < 100) {
       Alert.alert("Error", "Manifesto must be at least 100 characters long");
       return false;
     }
-
-    // Validate level is a number
     if (isNaN(parseInt(formData.level))) {
       Alert.alert("Error", "Level must be a valid number");
       return false;
     }
-
+    if (
+      !elections.some((election) => election.name === formData.electionName)
+    ) {
+      Alert.alert("Error", "Please select a valid election");
+      return false;
+    }
     return true;
   };
 
   const handleSubmit = async () => {
     if (!validateForm()) return;
-
     try {
       setLoading(true);
-      await api.createCandidate(formData);
-      Alert.alert("Success", "Candidate created successfully", [
-        {
-          text: "OK",
-          onPress: () => navigation.goBack(),
-        },
+      const response = await api.createCandidate(formData);
+      Alert.alert("Success", response.message, [
+        { text: "OK", onPress: () => navigation.goBack() },
       ]);
     } catch (error) {
       console.error("Error creating candidate:", error);
-      Alert.alert("Error", `Failed to create candidate: ${error.message}`);
+      if (error.status === 403 && error.details?.needsLogin) {
+        Alert.alert("Session Expired", "Please log in again.", [
+          { text: "OK", onPress: () => navigation.navigate("AdminLogin") },
+        ]);
+      } else {
+        Alert.alert("Error", `Failed to create candidate: ${error.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -203,14 +218,13 @@ const CreateCandidateScreen = ({ navigation }) => {
                 />
               </View>
             </View>
-
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Level *</Text>
               <TextInput
                 style={styles.input}
                 value={formData.level}
                 onChangeText={(text) => handleInputChange("level", text)}
-                placeholder="Enter level (e.g., 100, 200, 300, etc.)"
+                placeholder="Enter level (e.g., 100, 200, 300)"
                 placeholderTextColor="#999"
                 keyboardType="numeric"
               />
@@ -223,26 +237,33 @@ const CreateCandidateScreen = ({ navigation }) => {
           <View style={styles.card}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Election Name *</Text>
-              <TextInput
+              <Picker
+                selectedValue={formData.electionName}
                 style={styles.input}
-                value={formData.electionName}
-                onChangeText={(text) => handleInputChange("electionName", text)}
-                placeholder="Enter election name (e.g., Student Union Election 2024)"
-                placeholderTextColor="#999"
-              />
+                onValueChange={(value) =>
+                  handleInputChange("electionName", value)
+                }
+              >
+                <Picker.Item label="Select an election" value="" />
+                {elections.map((election) => (
+                  <Picker.Item
+                    key={election.id}
+                    label={election.name}
+                    value={election.name}
+                  />
+                ))}
+              </Picker>
               <Text style={styles.helperText}>
-                💡 If this election doesn't exist, it will be created
-                automatically
+                💡 Select an active election
               </Text>
             </View>
-
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Position *</Text>
               <TextInput
                 style={styles.input}
                 value={formData.position}
                 onChangeText={(text) => handleInputChange("position", text)}
-                placeholder="Enter position (e.g., President, Secretary, etc.)"
+                placeholder="Enter position (e.g., President, Secretary)"
                 placeholderTextColor="#999"
               />
             </View>
@@ -263,7 +284,7 @@ const CreateCandidateScreen = ({ navigation }) => {
                 style={[styles.input, styles.textArea]}
                 value={formData.manifesto}
                 onChangeText={(text) => handleInputChange("manifesto", text)}
-                placeholder="Write your manifesto - your vision, goals, and promises to the electorate (minimum 100 characters)"
+                placeholder="Write your manifesto (minimum 100 characters)"
                 placeholderTextColor="#999"
                 multiline
                 numberOfLines={6}
@@ -287,7 +308,6 @@ const CreateCandidateScreen = ({ navigation }) => {
             </Text>
           </LinearGradient>
         </TouchableOpacity>
-
         <View style={styles.bottomPadding} />
       </ScrollView>
     </SafeAreaView>
@@ -383,4 +403,5 @@ const styles = StyleSheet.create({
   submitText: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
   bottomPadding: { height: 30 },
 });
+
 export default CreateCandidateScreen;

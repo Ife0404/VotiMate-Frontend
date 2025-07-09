@@ -32,29 +32,65 @@ const CandidateScreen = ({ navigation, route }) => {
       setLoading(true);
       setImageLoadError(false);
       try {
-        // Fetch both candidate and election data
-        const [candidates, electionData] = await Promise.all([
-          api.getCandidates(),
-          api.getElectionStatus(),
-        ]);
+        // Fetch candidates first
+        const candidates = await api.getCandidates();
 
         const selectedCandidate = candidates.find(
           (cand) => cand.id === candidateId
         );
+
         if (!selectedCandidate) {
           throw new Error("Candidate not found");
         }
         setCandidate(selectedCandidate);
 
-        // Get the current election ID
-        if (electionData && electionData.length > 0) {
-          // Assuming the first election is the current one, or find the active one
-          const currentElection =
-            electionData.find((election) => election.status === "ACTIVE") ||
-            electionData[0];
-          setElectionId(currentElection.id);
+        // Try to get election ID from candidate data
+        let electionIdToUse = null;
+
+        // Check multiple possible election ID sources
+        if (selectedCandidate.election?.id) {
+          electionIdToUse = selectedCandidate.election.id;
+        } else if (selectedCandidate.electionId) {
+          electionIdToUse = selectedCandidate.electionId;
+        } else if (selectedCandidate.election_id) {
+          electionIdToUse = selectedCandidate.election_id;
+        }
+
+        // If we got an election ID from candidate, use it
+        if (electionIdToUse) {
+          setElectionId(electionIdToUse);
         } else {
-          throw new Error("No active election found");
+          // Fallback: Get active elections and use the first one
+          // This is not ideal but works as a fallback
+          try {
+            const activeElections = await api.getActiveElections();
+            if (activeElections && activeElections.length > 0) {
+              electionIdToUse = activeElections[0].id;
+              setElectionId(electionIdToUse);
+            } else {
+              throw new Error("No active elections found");
+            }
+          } catch (activeElectionsError) {
+            // If getActiveElections fails, try getting all elections
+            try {
+              const allElections = await api.getAllElections();
+              if (allElections && allElections.length > 0) {
+                // Find the most recent election (assuming higher ID = more recent)
+                const mostRecentElection = allElections.reduce(
+                  (latest, current) =>
+                    current.id > latest.id ? current : latest
+                );
+                electionIdToUse = mostRecentElection.id;
+                setElectionId(electionIdToUse);
+              } else {
+                throw new Error("No elections found");
+              }
+            } catch (allElectionsError) {
+              throw new Error(
+                "Unable to determine election for this candidate"
+              );
+            }
+          }
         }
       } catch (error) {
         Alert.alert(
